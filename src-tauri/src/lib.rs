@@ -7,7 +7,8 @@
 //   每 5 秒 tick：sensor.sample_and_reset() → state.apply_sample() → emit 表情
 //
 // 红线守护：
-// - 红线 2（不暴露数值）：emit 的载荷是 Expression 字符串，不是体力/心情数字
+// - 红线 2（不暴露数值）：emit 的载荷是 ExpressionPayload（表现层渲染指令），
+//   不是体力/心情数字。亮度/旋转等是"画多亮"的指令，不是游戏数值。
 // - 红线 3（不抢焦点）：窗口配置在 tauri.conf.json（透明/置顶/不抢焦点）
 // - 红线 4（本地优先）：无任何网络请求，感知层只聚合不存原始内容
 
@@ -44,7 +45,7 @@ fn poke_pet(app: tauri::AppHandle, state: tauri::State<'_, AppState>) {
         s.on_poke();
     }
     // 临时切到 Excited 表情（下次 tick 会按真实数值切回）
-    let _ = app.emit("expression-changed", Expression::Excited.as_str());
+    let _ = app.emit("expression-changed", Expression::Excited.to_payload());
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -89,10 +90,12 @@ pub fn run() {
                         pet.expression()
                     };
 
-                    // 4. 推送：表情到前端（不是数值！）
+                    // 4. 推送：表现层渲染指令到前端（不是游戏数值！）
+                    //    ExpressionPayload 含亮度/旋转/抖动等渲染指令，
+                    //    体力/心情等数值仍在 engine 内部，到不了这里。
                     let _ = app_handle.emit(
                         "expression-changed",
-                        expression.as_str(),
+                        expression.to_payload(),
                     );
                 }
             });

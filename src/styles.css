@@ -1,10 +1,10 @@
-/* Overworked 前端样式 —— 96×96 透明桌宠窗口 */
-
-:root {
-  /* 像素角色占位色：Office 灰调（PRD 4.1 主色调偏灰/暗） */
-  --pet-color: #6b7280;
-  --pet-shadow: #374151;
-}
+/* Overworked 前端样式 —— 透明桌宠窗口
+ *
+ * 窗口尺寸 160×200，但视觉上只占底部 96×96（角色区域）。
+ * 上方 104px 是透明留白，专给冒泡用——这样冒泡有空间不被窗口边界裁掉，
+ * 而透明窗口下用户只感知到角色本身，留白区看不见。
+ * （Windows 透明窗口会裁掉超出窗口的内容，所以必须把冒泡装进窗口里。）
+ */
 
 * {
   margin: 0;
@@ -14,27 +14,26 @@
 
 html,
 body {
-  width: 96px;
-  height: 96px;
-  /* 透明窗口：body 必须透明，否则会出现不透明背景块。
-     像素角色由 Canvas 绘制（不透明实体色），在透明背景上清晰可见。 */
+  width: 160px;
+  height: 200px;
   background: transparent;
-  overflow: hidden;
+  overflow: hidden; /* 内容都在窗口内，可以 hidden */
   user-select: none;
   -webkit-user-select: none;
   font-family: monospace;
+  position: relative;
 }
 
-/* 整个窗口可拖动（Tauri/WebView 拖动支持） */
-/* 但 Canvas 点击仍要能触发 poke —— 用 -webkit-app-region: drag 时
-   点击事件会被吞，所以默认 drag，poke 走双击或右键（后续优化）。
-   MVP 先全窗口可拖。 */
+/* 像素角色 Canvas：钉在窗口底部居中（视觉上的"角落小生物"） */
 #pet {
-  display: block;
+  position: absolute;
+  /* 底部居中：窗口 160 宽，Canvas 96 宽，左边距 (160-96)/2 = 32 */
+  left: 32px;
+  bottom: 0;
   width: 96px;
   height: 96px;
+  /* 整个角色区可拖动；poke 走双击触发（drag 会吞单击） */
   -webkit-app-region: drag;
-  /* 关闭图像平滑，保证像素感 */
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   cursor: grab;
@@ -42,4 +41,45 @@ body {
 
 #pet:active {
   cursor: grabbing;
+}
+
+/* ===== 冒泡（红线 1：只反应不教育；红线 3：3 秒消失不打断） ===== */
+/* 冒泡定位在角色正上方（窗口的上半透明区） */
+#bubble {
+  position: absolute;
+  /* 紧贴角色顶部上方：角色顶 = bottom 96px，冒泡在其上 */
+  bottom: 104px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  max-width: 148px;
+  padding: 4px 8px;
+  background: #ffffff;
+  color: #1f2937;
+  border: 2px solid #1f2937;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 10;
+}
+
+#bubble.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 气泡下方的指向三角（指向角色） */
+#bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #1f2937;
 }

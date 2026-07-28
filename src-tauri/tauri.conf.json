@@ -15,8 +15,8 @@
       {
         "label": "main",
         "title": "Overworked",
-        "width": 96,
-        "height": 96,
+        "width": 160,
+        "height": 200,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
