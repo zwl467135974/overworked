@@ -1,0 +1,45 @@
+/* Overworked 前端样式 —— 96×96 透明桌宠窗口 */
+
+:root {
+  /* 像素角色占位色：Office 灰调（PRD 4.1 主色调偏灰/暗） */
+  --pet-color: #6b7280;
+  --pet-shadow: #374151;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 96px;
+  height: 96px;
+  /* 透明窗口：body 必须透明，否则会出现不透明背景块。
+     像素角色由 Canvas 绘制（不透明实体色），在透明背景上清晰可见。 */
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: monospace;
+}
+
+/* 整个窗口可拖动（Tauri/WebView 拖动支持） */
+/* 但 Canvas 点击仍要能触发 poke —— 用 -webkit-app-region: drag 时
+   点击事件会被吞，所以默认 drag，poke 走双击或右键（后续优化）。
+   MVP 先全窗口可拖。 */
+#pet {
+  display: block;
+  width: 96px;
+  height: 96px;
+  -webkit-app-region: drag;
+  /* 关闭图像平滑，保证像素感 */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: grab;
+}
+
+#pet:active {
+  cursor: grabbing;
+}

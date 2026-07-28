@@ -64,9 +64,13 @@ tmp/
 !.env.standalone.example
 
 # ===== ZCode / Agent 本地工作区（不入库）=====
-.zcode/tasks/
-.zcode/plans/
-.zcode/LOCAL.md
+.zcode/
+
+# ===== Cargo.lock 策略 =====
+# Overworked 是二进制应用（非库），应提交 Cargo.lock 保证可复现构建
+# （覆盖前面 Rust 段的默认忽略）
+!Cargo.lock
+!src-tauri/Cargo.lock
 
 # ===== 操作系统 =====
 .DS_Store
