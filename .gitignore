@@ -1,0 +1,74 @@
+# ===== Rust / Cargo =====
+target/
+**/*.rs.bk
+Cargo.lock
+# 注：二进制应用（非库）通常应提交 Cargo.lock；若后续确认为 app，可删除上一行
+
+# ===== Node / 前端 =====
+node_modules/
+dist/
+dist-ssr/
+.npm/
+.pnpm-store/
+*.local
+
+# ===== Tauri =====
+src-tauri/target/
+src-tauri/gen/schemas/        # Tauri 自动生成的 schema
+# Tauri 构建产物
+*.app
+*.exe
+*.dll
+*.so
+*.dylib
+
+# ===== 本地数据（隐私红线：绝不提交任何用户行为数据）=====
+# Overworked 的核心是行为感知 + 本地存档，任何运行时产生的数据都不应入库
+data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+save/
+saves/
+
+# ===== 日志 =====
+logs/
+*.log
+
+# ===== IDE / 编辑器 =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== 系统 / 临时 =====
+.tmp/
+tmp/
+*.tmp
+*.bak
+
+# ===== 环境变量（防止密钥泄露）=====
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.standalone.example
+
+# ===== ZCode / Agent 本地工作区（不入库）=====
+.zcode/tasks/
+.zcode/plans/
+.zcode/LOCAL.md
+
+# ===== 操作系统 =====
+.DS_Store
+ehthumbs.db
+Thumbnail.db
