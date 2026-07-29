@@ -653,6 +653,55 @@ listen("hospital-discharge", () => {
   previewUntil = 0; // 解除冻结，恢复真实感知驱动
 });
 
+// ===== Phase 3 特殊事件 =====
+// 午休 → 切 lunchnap 状态（持续到时段结束/开始打字）
+listen("lunch-nap", () => {
+  endHoldAction();
+  currentState = "lunchnap";
+  stateFrame = 0;
+  previewUntil = performance.now() + 600000; // 冻结10分钟（午休期间）
+});
+// 发工资 → 播 payday 动作
+listen("payday", () => {
+  endHoldAction();
+  triggerOneShot("payday");
+});
+// 团建 → 播 teambuilding 动作
+listen("team-building", () => {
+  endHoldAction();
+  triggerOneShot("teambuilding");
+});
+// 升职 → 切 promoted 状态（持续）
+listen("promoted", () => {
+  endHoldAction();
+  currentState = "promoted";
+  stateFrame = 0;
+  previewUntil = performance.now() + 300000; // 庆祝5分钟
+});
+// 度假 → 切 vacation 状态
+listen("vacation-start", () => {
+  endHoldAction();
+  currentState = "vacation";
+  stateFrame = 0;
+  // 度假持续几天，previewUntil 设很长
+  previewUntil = performance.now() + 3 * 86400000;
+});
+// 度假结束 → 回正常
+listen("vacation-end", () => {
+  previewUntil = 0;
+});
+// 离职 → 播 leave 动作
+listen("leave-event", () => {
+  endHoldAction();
+  triggerOneShot("leave");
+  previewUntil = performance.now() + 3 * 86400000; // 离职3天
+});
+// 回归 → 播 return 动作
+listen("return-from-leave", () => {
+  previewUntil = 0;
+  triggerOneShot("return");
+});
+
 // 数值细条更新（红线2 调整后：四属性对前端可见）
 const barStamina = document.getElementById("bar-stamina");
 const barMood = document.getElementById("bar-mood");

@@ -38,6 +38,19 @@ pub struct Stats {
     pub streak_days: i64,
 }
 
+/// 事件追踪状态（Phase 3 特殊事件用）
+#[derive(Debug, Clone, Default)]
+pub struct EventState {
+    pub last_payday_month: i64,       // 上次发工资的月份（防同月重复）
+    pub last_teambuilding_day: String, // 上次团建日期（每周五1次）
+    pub has_promoted: bool,            // 是否已升职
+    pub mood_zero_days: i64,           // 连续心情归零天数（离职判断）
+    pub last_mood_day: String,         // 上次检查心情的日期
+    pub vacation_until: i64,           // 度假结束时间戳（0=没度假）
+    pub leave_until: i64,              // 离职回归时间戳（0=没离职）
+    pub pet_variant: i64,              // 角色变体（离职回归后微变）
+}
+
 /// 存档存储器。持 SQLite 连接，所有操作同步（SQLite 够快，无需异步）。
 pub struct SaveStore {
     conn: Connection,
@@ -76,7 +89,19 @@ impl SaveStore {
                 x INTEGER NOT NULL,
                 y INTEGER NOT NULL
             );
-            INSERT OR IGNORE INTO stats (id) VALUES (1);",
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                last_payday_month INTEGER DEFAULT 0,
+                last_teambuilding_day TEXT,
+                has_promoted INTEGER DEFAULT 0,
+                mood_zero_days INTEGER DEFAULT 0,
+                last_mood_day TEXT,
+                vacation_until INTEGER DEFAULT 0,
+                leave_until INTEGER DEFAULT 0,
+                pet_variant INTEGER DEFAULT 0
+            );
+            INSERT OR IGNORE INTO stats (id) VALUES (1);
+            INSERT OR IGNORE INTO events (id) VALUES (1);",
         )?;
         Ok(())
     }
@@ -205,6 +230,69 @@ impl SaveStore {
                 |r| Ok(WindowPos { x: r.get(0)?, y: r.get(1)? }),
             )
             .ok()
+    }
+
+    /// 读取事件追踪状态。
+    pub fn load_events(&self) -> EventState {
+        let row: rusqlite::Result<(i64, Option<String>, i64, i64, Option<String>, i64, i64, i64)> =
+            self.conn.query_row(
+                "SELECT last_payday_month, last_teambuilding_day, has_promoted,
+                        mood_zero_days, last_mood_day, vacation_until, leave_until, pet_variant
+                 FROM events WHERE id = 1",
+                [],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                    ))
+                },
+            );
+        match row {
+            Ok((pm, tb, hp, mzd, lmd, vu, lu, pv)) => EventState {
+                last_payday_month: pm,
+                last_teambuilding_day: tb.unwrap_or_default(),
+                has_promoted: hp != 0,
+                mood_zero_days: mzd,
+                last_mood_day: lmd.unwrap_or_default(),
+                vacation_until: vu,
+                leave_until: lu,
+                pet_variant: pv,
+            },
+            Err(_) => EventState::default(),
+        }
+    }
+
+    /// 保存事件追踪状态。
+    pub fn save_events(&self, ev: &EventState) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "UPDATE events SET
+                last_payday_month = ?1,
+                last_teambuilding_day = ?2,
+                has_promoted = ?3,
+                mood_zero_days = ?4,
+                last_mood_day = ?5,
+                vacation_until = ?6,
+                leave_until = ?7,
+                pet_variant = ?8
+             WHERE id = 1",
+            params![
+                ev.last_payday_month,
+                if ev.last_teambuilding_day.is_empty() { None } else { Some(&ev.last_teambuilding_day) },
+                ev.has_promoted as i64,
+                ev.mood_zero_days,
+                if ev.last_mood_day.is_empty() { None } else { Some(&ev.last_mood_day) },
+                ev.vacation_until,
+                ev.leave_until,
+                ev.pet_variant,
+            ],
+        )?;
+        Ok(())
     }
 }
 

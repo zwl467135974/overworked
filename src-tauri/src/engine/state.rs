@@ -49,12 +49,19 @@ pub struct PetState {
 /// 事件结果——apply_sample 可能产生的事件，由调用方 emit 给前端。
 #[derive(Debug, Clone)]
 pub enum TickEvent {
-    /// 番茄钟完成（连续专注25分钟）
+    // Phase 2
     PomodoroComplete,
-    /// 进医院（体力归零）
     HospitalAdmit,
-    /// 出院（在医院满5分钟）
     HospitalDischarge,
+    // Phase 3 特殊事件
+    LunchNap,         // 午休（12-13点挂机）
+    Payday(i64),      // 发工资（每月1号），携带金额
+    TeamBuilding,     // 团建（周五下午挂机）
+    Promoted,         // 升职（存款达阈值）
+    VacationStart,    // 度假开始（存款达旅游阈值）
+    VacationEnd,      // 度假结束
+    Leave,            // 离职（连续3天心情0）
+    ReturnFromLeave,  // 离职后回归
 }
 
 impl PetState {
@@ -120,26 +127,60 @@ impl PetState {
     /// 消费一个 5 秒行为样本，推进四属性，可能触发事件。
     ///
     /// 返回本 tick 产生的事件列表（番茄钟完成/进医院/出院），调用方 emit 给前端。
-    pub fn apply_sample(&mut self, sample: &BehaviorSample) -> Vec<TickEvent> {
+    /// 消费一个 5 秒行为样本，推进四属性，可能触发事件。
+    /// ev_state 是事件追踪状态（跨会话），now_secs 是当前系统时间戳（事件判断用）。
+    pub fn apply_sample(
+        &mut self,
+        sample: &BehaviorSample,
+        ev: &mut save::EventState,
+        now_secs: u64,
+    ) -> Vec<TickEvent> {
         let now = Instant::now();
         let dt = now.duration_since(self.last_tick).as_secs_f32().max(0.1);
         self.last_tick = now;
         let mut events = Vec::new();
 
-        // ===== 医院检查（优先级最高）=====
+        // ===== 度假中检查（最高优先级，期间什么都不做）=====
+        if ev.vacation_until > 0 && (now_secs as i64) < ev.vacation_until {
+            return events; // 还在度假
+        }
+        if ev.vacation_until > 0 && (now_secs as i64) >= ev.vacation_until {
+            // 度假结束
+            ev.vacation_until = 0;
+            self.mood = 100.0; // 度假回来心情满
+            events.push(TickEvent::VacationEnd);
+        }
+
+        // ===== 离职回归检查 =====
+        if ev.leave_until > 0 && (now_secs as i64) >= ev.leave_until {
+            ev.leave_until = 0;
+            ev.pet_variant += 1; // 形态微变（领带色变等）
+            self.mood = 70.0;    // 回归心情重置
+            self.stamina = 80.0;
+            events.push(TickEvent::ReturnFromLeave);
+        }
+        if ev.leave_until > 0 {
+            return events; // 还在离职期，不推进
+        }
+
+        // ===== 医院检查 =====
         if let Some(until) = self.hospital_until {
             if now < until {
-                // 还在医院：维持躺平，不消耗不恢复，直接返回
                 return events;
             } else {
-                // 出院：恢复60体力（大病初愈，不 满 血）
                 self.hospital_until = None;
                 self.stamina = 60.0;
-                self.mood = (self.mood + 20.0).min(100.0); // 出院心情好转
+                self.mood = (self.mood + 20.0).min(100.0);
                 events.push(TickEvent::HospitalDischarge);
                 return events;
             }
         }
+
+        // ===== 时间信息（本地时区，MVP）=====
+        let hour = get_local_hour();
+        let today = today_str_from_secs(now_secs);
+        let weekday = weekday_from_secs(now_secs); // 0=周日, 5=周五
+        let month = month_from_secs(now_secs);
 
         // ===== 正常数值推进 =====
         let keys_per_sec = sample.key_count as f32 / dt;
@@ -177,8 +218,58 @@ impl PetState {
 
         // ===== 过劳送医检查 =====
         if self.stamina <= 0.0 {
-            self.hospital_until = Some(now + Duration::from_secs(300)); // 5 分钟
+            self.hospital_until = Some(now + Duration::from_secs(300));
             events.push(TickEvent::HospitalAdmit);
+        }
+
+        // ===== Phase 3 特殊事件 =====
+
+        // 午休：12-13点 + 挂机
+        if hour == 12 && is_idling {
+            events.push(TickEvent::LunchNap);
+        }
+
+        // 发工资：每月1号（防同月重复）
+        if today.ends_with("-01") && ev.last_payday_month != month {
+            ev.last_payday_month = month;
+            let salary = (self.hourly_wage * 8.0 * 22.0) as i64; // 月薪估算
+            self.savings += salary as f32;
+            events.push(TickEvent::Payday(salary));
+        }
+
+        // 团建：周五 + 下午 + 挂机（每周1次）
+        if weekday == 5 && hour >= 14 && hour < 18 && is_idling && ev.last_teambuilding_day != today {
+            ev.last_teambuilding_day = today.clone();
+            events.push(TickEvent::TeamBuilding);
+        }
+
+        // 升职：存款>=2000 且未升过
+        if self.savings >= 2000.0 && !ev.has_promoted {
+            ev.has_promoted = true;
+            self.mood = 100.0;
+            events.push(TickEvent::Promoted);
+        }
+
+        // 度假：存款>=3000（升职后继续攒够）
+        if self.savings >= 3000.0 && ev.vacation_until == 0 && ev.has_promoted {
+            ev.vacation_until = (now_secs as i64) + 3 * 86400; // 3天后
+            self.savings -= 1500.0; // 度假花钱
+            events.push(TickEvent::VacationStart);
+        }
+
+        // 离职：每天检查心情，连续3天=0则离职
+        if ev.last_mood_day != today {
+            ev.last_mood_day = today.clone();
+            if self.mood <= 0.0 {
+                ev.mood_zero_days += 1;
+            } else {
+                ev.mood_zero_days = 0;
+            }
+        }
+        if ev.mood_zero_days >= 3 && ev.leave_until == 0 {
+            ev.leave_until = (now_secs as i64) + 3 * 86400; // 3天后回归
+            ev.mood_zero_days = 0;
+            events.push(TickEvent::Leave);
         }
 
         events
@@ -282,6 +373,42 @@ fn get_local_hour() -> u32 {
 
 #[cfg(not(windows))]
 fn get_local_hour() -> u32 {
-    // 非 Windows 暂返回 0（不触发夜班），后续接 chrono 跨平台统一
     0
+}
+
+/// 从 Unix 时间戳算今日 YYYY-MM-DD（本地时区近似，用 get_local_hour 的平台逻辑）。
+fn today_str_from_secs(secs: u64) -> String {
+    // MVP：用 UTC 日期 + 本地小时偏移近似。够用。
+    let days = secs / 86400;
+    date_from_days(days)
+}
+
+/// 从 Unix 时间戳算星期（0=周日, 5=周五, 6=周六）。
+fn weekday_from_secs(secs: u64) -> u32 {
+    // 1970-01-01 是周四（4）。算 (4 + days) % 7。
+    let days = secs / 86400;
+    ((4 + days) % 7) as u32
+}
+
+/// 从 Unix 时间戳算月份（1-12）。
+fn month_from_secs(secs: u64) -> i64 {
+    let days = secs / 86400;
+    let date = date_from_days(days);
+    let parts: Vec<&str> = date.split('-').collect();
+    parts.get(1).and_then(|m| m.parse().ok()).unwrap_or(1)
+}
+
+/// 天数（since epoch）转 YYYY-MM-DD。
+fn date_from_days(days: u64) -> String {
+    let z = days as i64 + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    format!("{:04}-{:02}-{:02}", year, m, d)
 }

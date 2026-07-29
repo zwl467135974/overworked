@@ -273,6 +273,10 @@ pub fn run() {
                     };
 
                     // 2. 状态：消费样本，推进四属性 + 收集事件
+                    let now_secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
                     let (expression, snapshot, stats, events, work_secs, idle_secs) = {
                         let mut pet = match state.state.lock() {
                             Ok(g) => g,
@@ -281,7 +285,16 @@ pub fn run() {
                                 continue;
                             }
                         };
-                        let events = pet.apply_sample(&sample);
+                        // 读事件追踪状态，传给 apply_sample
+                        let mut ev_state = match state.save.lock() {
+                            Ok(s) => s.load_events(),
+                            Err(_) => Default::default(),
+                        };
+                        let events = pet.apply_sample(&sample, &mut ev_state, now_secs);
+                        // 存回事件追踪状态
+                        if let Ok(save) = state.save.lock() {
+                            let _ = save.save_events(&ev_state);
+                        }
                         let worked = sample.key_count > 5;
                         let idled = sample.idle_seconds >= 30;
                         (
@@ -294,11 +307,11 @@ pub fn run() {
                         )
                     };
 
-                    // 3. 推送：表现层渲染指令 + 数值面板（红线2 调整后）
+                    // 3. 推送
                     let _ = app_handle.emit("expression-changed", expression.to_payload());
                     let _ = app_handle.emit("stats-update", stats);
 
-                    // 3b. 处理事件：番茄钟/进医院/出院
+                    // 3b. 处理事件
                     for ev in &events {
                         match ev {
                             TickEvent::PomodoroComplete => {
@@ -312,6 +325,38 @@ pub fn run() {
                             TickEvent::HospitalDischarge => {
                                 let _ = app_handle.emit("hospital-discharge", ());
                                 let _ = app_handle.emit("bubble-show", "出院了…大病初愈");
+                            }
+                            TickEvent::LunchNap => {
+                                let _ = app_handle.emit("lunch-nap", ());
+                                let _ = app_handle.emit("bubble-show", "午休了…趴一会");
+                            }
+                            TickEvent::Payday(amount) => {
+                                let _ = app_handle.emit("payday", ());
+                                let _ = app_handle.emit("bubble-show", &format!("发工资了！+{}", amount));
+                            }
+                            TickEvent::TeamBuilding => {
+                                let _ = app_handle.emit("team-building", ());
+                                let _ = app_handle.emit("bubble-show", "周五团建！");
+                            }
+                            TickEvent::Promoted => {
+                                let _ = app_handle.emit("promoted", ());
+                                let _ = app_handle.emit("bubble-show", "我升职了！");
+                            }
+                            TickEvent::VacationStart => {
+                                let _ = app_handle.emit("vacation-start", ());
+                                let _ = app_handle.emit("bubble-show", "去度假啦！");
+                            }
+                            TickEvent::VacationEnd => {
+                                let _ = app_handle.emit("vacation-end", ());
+                                let _ = app_handle.emit("bubble-show", "度完假回来了");
+                            }
+                            TickEvent::Leave => {
+                                let _ = app_handle.emit("leave-event", ());
+                                let _ = app_handle.emit("bubble-show", "我不干了…再见");
+                            }
+                            TickEvent::ReturnFromLeave => {
+                                let _ = app_handle.emit("return-from-leave", ());
+                                let _ = app_handle.emit("bubble-show", "新员工报到！");
                             }
                         }
                     }
