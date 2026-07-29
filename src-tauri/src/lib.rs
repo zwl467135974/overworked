@@ -114,6 +114,7 @@ fn save_on_exit(app: &tauri::AppHandle) {
 /// 构建右键菜单（每次右键动态构建，因为皮肤列表会变）。
 fn state_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let hide_1h = MenuItem::with_id(app, "hide_1h", "暂时消失 1 小时", true, None::<&str>)?;
+    let fall = MenuItem::with_id(app, "fall", "掉下去", true, None::<&str>)?;
     let about = MenuItem::with_id(app, "about", "关于", true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, None)?;
     let sep = PredefinedMenuItem::separator(app)?;
@@ -165,6 +166,7 @@ fn state_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
 
     let mut builder = MenuBuilder::new(app)
         .item(&hide_1h)
+        .item(&fall)
         .item(&sep)
         .item(&preview_item)
         .item(&sep)
@@ -328,12 +330,36 @@ pub fn run() {
                 }
             });
 
-            // 退出时存档（窗口关闭事件）
+            // 窗口事件：退出存档 + 拖动结束检测（Moved debounce）
             let app_handle = app.handle().clone();
+            // debounce：每次 Moved 重置一个 300ms 倒计时，到期=拖动结束
+            let drag_timer: std::sync::Arc<std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>> =
+                std::sync::Arc::new(std::sync::Mutex::new(None));
             if let Some(win) = app.get_webview_window("main") {
+                let drag_timer_clone = drag_timer.clone();
                 win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { .. } = event {
-                        save_on_exit(&app_handle);
+                    match event {
+                        tauri::WindowEvent::CloseRequested { .. } => {
+                            save_on_exit(&app_handle);
+                        }
+                        tauri::WindowEvent::Moved(_) => {
+                            // 拖动中：重置 debounce 倒计时
+                            let ah = app_handle.clone();
+                            let mut guard = match drag_timer_clone.lock() {
+                                Ok(g) => g,
+                                Err(_) => return,
+                            };
+                            if let Some(handle) = guard.take() {
+                                handle.abort();
+                            }
+                            let task = async_runtime::spawn(async move {
+                                sleep(Duration::from_millis(300)).await;
+                                // 300ms 内无新 Moved = 拖动结束，通知前端
+                                let _ = ah.emit("drag-ended", ());
+                            });
+                            *guard = Some(task);
+                        }
+                        _ => {}
                     }
                 });
             }
@@ -345,6 +371,9 @@ pub fn run() {
                 match id {
                     "hide_1h" => {
                         let _ = app_handle.emit("menu/hide-1h", ());
+                    }
+                    "fall" => {
+                        let _ = app_handle.emit("menu/fall", ());
                     }
                     "about" => {
                         let _ = app_handle.emit(

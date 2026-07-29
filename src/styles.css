@@ -71,23 +71,29 @@ body {
   font-size: 9px;
 }
 
-/* 条形（体力/心情） */
+/* 条形（体力/心情）—— 半透明白底，在透明窗口上清晰 */
 .stat-bar {
   flex: 1;
-  height: 6px;
-  background: rgba(31, 41, 55, 0.3);
-  border: 1px solid rgba(31, 41, 55, 0.5);
+  height: 7px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(31, 41, 55, 0.4);
+  border-radius: 3px;
   overflow: hidden;
 }
 
 .stat-fill {
   height: 100%;
   width: 50%;
-  transition: width 0.5s ease;
+  border-radius: 2px;
+  transition: width 0.5s ease, background 0.3s ease;
 }
 
-#bar-stamina { background: #22c55e; } /* 体力绿 */
-#bar-mood { background: #a855f7; }    /* 心情紫 */
+#bar-stamina { background: #22c55e; }
+#bar-mood { background: #a855f7; }
+
+/* 体力低于30%变红警告（JS 加 .low 类切换） */
+#bar-stamina.low { background: #ef4444; }
+#bar-mood.low { background: #ef4444; }
 
 /* 数字（存款/时薪） */
 .stat-num {
@@ -95,6 +101,40 @@ body {
   color: #1f2937;
   font-size: 9px;
   text-align: right;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* ===== 存款增加飘字特效 ===== */
+#float-gain {
+  position: absolute;
+  /* 跟存款行对齐（第3行，约 bottom: 124px） */
+  bottom: 124px;
+  right: 14px;
+  color: #ca8a04;
+  font-size: 11px;
+  font-weight: bold;
+  text-shadow: 0 0 3px rgba(255, 255, 255, 0.9), 0 0 2px rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 8;
+}
+
+#float-gain.show {
+  animation: floatUp 1.2s ease-out forwards;
+}
+
+@keyframes floatUp {
+  0% { opacity: 0; transform: translateY(0) scale(0.8); }
+  20% { opacity: 1; transform: translateY(-4px) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-24px) scale(1); }
+}
+
+/* 存款数字增加时短暂金色高亮 */
+.stat-num.gain {
+  color: #ca8a04 !important;
+  transition: color 0.3s ease;
 }
 
 /* ===== 冒泡（红线 1：只反应不教育；红线 3：3 秒消失不打断） ===== */
@@ -105,14 +145,17 @@ body {
   bottom: 155px;
   left: 50%;
   transform: translateX(-50%) translateY(8px);
-  max-width: 148px;
+  width: 148px;
   padding: 4px 8px;
   background: #ffffff;
   color: #1f2937;
   border: 2px solid #1f2937;
+  border-radius: 4px;
   font-size: 11px;
   line-height: 1.3;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-all;
+  text-align: center;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;

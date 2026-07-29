@@ -150,17 +150,15 @@ impl PetState {
             self.stamina -= (keys_per_sec * 0.15) * dt;
             self.hourly_wage += keys_per_sec * 0.02 * dt;
             self.savings += self.hourly_wage * dt / 3600.0;
-            self.mood -= 0.3 * dt;
-            // 番茄钟：工作中累加专注时长
+            self.mood -= 0.2 * dt;
             self.focus_seconds += dt;
         } else if is_idling {
             self.stamina += 1.5 * dt;
-            self.mood += 0.8 * dt;
-            // 挂机打断专注
+            self.mood += 1.2 * dt; // 摸鱼心情回升（摸鱼快乐）
             self.focus_seconds = 0.0;
         } else {
             self.stamina += 0.5 * dt;
-            // 一般空闲不算挂机，专注不清零但也不累加
+            self.mood += 0.4 * dt; // 一般空闲也回心情（休息就好）
         }
 
         // 钳制

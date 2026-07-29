@@ -64,8 +64,9 @@ async function loadSkin(skinName) {
         invoke("read_skin_frame", { skin: info.name, action, frame: f }).then((dataUrl) => {
           if (dataUrl) {
             const img = new Image();
+            img.onload = () => { frameCache[action][idx] = img; };
+            img.onerror = () => { console.warn(`[skin] 帧加载失败: ${action}/${f}`); };
             img.src = dataUrl;
-            frameCache[action][idx] = img;
           }
         })
       );
@@ -198,49 +199,51 @@ function stopWalking() {
 }
 
 // ===== 桌面物理交互：掉落 + 底边走（Shimeji 式）=====
-// 拖到空中松开 → 重力下落 + 弹跳 → 落到底边后左右走一段
+// 简单物理：拖到空中松开 → 掉到底边 + 弹跳 + 走边
+// 拖动结束由 Rust 侧 WindowEvent::Moved debounce 检测，emit "drag-ended"
 const WIN_W = 160;
 const WIN_H = 200;
 
 let physicsTimer = null;
 
-/** 检测窗口是否悬空（不在底边），是则触发掉落 */
+/** 拖动结束后检测：若悬空（离底边>50px）则掉落 */
 async function startFallIfNeeded() {
   if (physicsTimer) return;
-  // currentMonitor 是命名空间函数，不在 win 实例上
   const monitor = await window.__TAURI__.window.currentMonitor().catch(() => null);
-  if (!monitor) {
-    console.warn("[physics] 拿不到 monitor");
-    return;
-  }
+  if (!monitor) return;
   const screenH = monitor.size.height;
-  const screenW = monitor.size.width;
   const scaleFactor = monitor.scaleFactor;
   let pos;
   try {
     pos = await win.outerPosition();
   } catch {
-    console.warn("[physics] 拿不到窗口位置");
     return;
   }
   const winH_phys = Math.round(WIN_H * scaleFactor);
   const bottomGap = screenH - (pos.y + winH_phys);
   if (bottomGap > 50) {
-    startFall(pos, screenH, scaleFactor);
+    doFall(screenH, scaleFactor);
   }
 }
 
-/** 重力下落 + 弹跳。落到底边后触发底边走。 */
-function startFall(startPos, screenH, scaleFactor) {
-  let y = startPos.y;
-  let vy = 0; // 垂直速度（物理像素/帧）
-  const gravity = 2.5; // 重力加速度
-  const groundY = screenH - Math.round(WIN_H * scaleFactor); // 底边着地时的 y
+/** 真正执行掉落（重力下落 + 弹跳 + 落地走边） */
+async function doFall(screenH, scaleFactor) {
+  const screenW = (await window.__TAURI__.window.currentMonitor().catch(() => null))?.size.width || 1920;
+  let pos;
+  try {
+    pos = await win.outerPosition();
+  } catch {
+    return;
+  }
+  let y = pos.y;
+  const startX = pos.x;
+  let vy = 0;
+  const gravity = 2.5;
+  const groundY = screenH - Math.round(WIN_H * scaleFactor);
   let bounces = 0;
   const maxBounces = 2;
 
-  // 掉落时播 drag 动作（被拽着掉下去的挣扎感）
-  triggerHoldAction("drag");
+  triggerHoldAction("drag"); // 掉落挣扎
 
   physicsTimer = setInterval(async () => {
     vy += gravity;
@@ -248,28 +251,25 @@ function startFall(startPos, screenH, scaleFactor) {
     if (y >= groundY) {
       y = groundY;
       if (bounces < maxBounces && vy > 8) {
-        // 弹跳：速度反向衰减
         vy = -Math.round(vy * 0.4);
         bounces++;
       } else {
-        // 落定
         clearInterval(physicsTimer);
         physicsTimer = null;
         try {
           const { PhysicalPosition } = window.__TAURI__.window;
-          await win.setPosition(new PhysicalPosition(startPos.x, groundY));
+          await win.setPosition(new PhysicalPosition(startX, groundY));
         } catch {}
         invoke("save_window_pos").catch(() => {});
         endHoldAction();
-        // 落地后沿底边走一段
-        strollOnGround(startPos.x, groundY, screenH, scaleFactor);
+        strollOnGround(startX, groundY, screenW, scaleFactor);
       }
     }
     try {
       const { PhysicalPosition } = window.__TAURI__.window;
-      await win.setPosition(new PhysicalPosition(startPos.x, Math.round(y)));
+      await win.setPosition(new PhysicalPosition(startX, Math.round(y)));
     } catch {}
-  }, 16); // ~60fps
+  }, 16);
 }
 
 /** 落地后沿底边左右走一段 */
@@ -301,33 +301,6 @@ function strollOnGround(startX, groundY, screenW, scaleFactor) {
 }
 
 // ===== 拖动结束检测（轮询法）=====
-// startDragging 后 mouseup 收不到，改用轮询窗口位置：
-// 窗口位置变化=拖动中；停止变化 400ms=拖动结束，触发掉落检测。
-let lastWinPos = null;
-let posStableSince = 0;
-let wasMoving = false;
-
-async function pollDragEnd() {
-  if (physicsTimer) return; // 物理运动中不检测
-  let pos;
-  try {
-    pos = await win.outerPosition();
-  } catch {
-    return;
-  }
-  const moved = lastWinPos && (pos.x !== lastWinPos.x || pos.y !== lastWinPos.y);
-  if (moved) {
-    wasMoving = true;
-    posStableSince = performance.now();
-  } else if (wasMoving && performance.now() - posStableSince > 400) {
-    // 拖动结束
-    wasMoving = false;
-    invoke("save_window_pos").catch(() => {});
-    startFallIfNeeded();
-  }
-  lastWinPos = { x: pos.x, y: pos.y };
-}
-
 // 随机生动动作（walk/jump）的下次触发时间
 let nextAmbient = performance.now() + 15000 + Math.random() * 15000;
 
@@ -342,14 +315,13 @@ let currentPayload = {
 };
 
 // ===== 交互：单击 poke / 拖动分离 =====
-// 拖动用 Tauri startDragging（原生窗口拖动）；poke 是短按未移动。
-// 关键：startDragging 后 Tauri 接管鼠标，后续 mousemove/mouseup 可能收不到，
-// 所以一旦判定为拖动就立即 return，不再依赖后续事件。
+// 拖动：左键=移位（不掉）。掉落走右键菜单「掉下去」。
+// poke：左键短按未移动。
 let mouseDown = null;
+
 canvas.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
   mouseDown = { x: e.screenX, y: e.screenY, t: performance.now(), dragged: false };
-  // 按下即触发 poke 持续动作（按住保持，松开结束）
   triggerHoldAction("poke");
 });
 
@@ -358,12 +330,8 @@ canvas.addEventListener("mousemove", (e) => {
   const dx = e.screenX - mouseDown.x;
   const dy = e.screenY - mouseDown.y;
   if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-    // 移动超过阈值 → 切换为拖动
     mouseDown.dragged = true;
-    endHoldAction(); // 结束 poke
-    // 先启动 drag 持续动画（挣扎姿态），再 startDragging
-    // 时序关键：drag 动作设好后，渲染循环会持续播 drag 帧，
-    // 即使 startDragging 接管鼠标也不影响（动画由 RAF 驱动，不依赖鼠标事件）
+    endHoldAction();
     triggerHoldAction("drag");
     win.startDragging();
   }
@@ -371,7 +339,6 @@ canvas.addEventListener("mousemove", (e) => {
 
 canvas.addEventListener("mouseup", (e) => {
   if (e.button !== 0) return;
-  // 拖动结束的检测交给 pollDragEnd（mouseup 在 startDragging 后可能不触发）
   endHoldAction();
   mouseDown = null;
 });
@@ -389,10 +356,13 @@ canvas.addEventListener("contextmenu", (e) => {
 });
 
 // ===== 渲染主循环 =====
-function render(now) {
-  // 拖动结束检测（每帧轮询，轮询内部有 400ms 去抖）
-  pollDragEnd();
+// ===== 拖动结束检测（由 Rust 侧 Moved debounce emit）=====
+// 左键拖=移位，只存位置不掉落（掉落走右键菜单）
+listen("drag-ended", () => {
+  invoke("save_window_pos").catch(() => {});
+});
 
+function render(now) {
   // 帧推进
   if (now - lastFrameTime >= FRAME_INTERVAL) {
     lastFrameTime = now;
@@ -517,28 +487,59 @@ function rgbToHueRotate([r, g, b]) {
 // ===== 冒泡系统 =====
 const bubbleEl = document.getElementById("bubble");
 const BUBBLE_LINES = {
-  Working: ["需求好急", "这个 bug 改不完", "再撑一下"],
-  Tired: ["眼皮好沉", "撑不住了", "几点了"],
-  Exhausted: ["我废了", "需要躺一会"],
-  Overworked: ["不行了", "救护车…", "到极限了"],
-  Idle: ["带薪摸鱼", "老板没在看", "我瘫一会儿"],
-  NightShift: ["zzZ", "夜班双倍，值了", "天怎么亮了"],
-  Excited: ["冲冲冲", "需求好急！", "今天状态不错"],
-  Focused: ["别打扰我", "进入心流了"],
-  Chaotic: ["甲方又改需求", "我在切哪个窗口", "信息过载"],
-  Happy: ["交付了！", "终于能睡了", "下班！"],
+  Working: [
+    "需求好急", "这个 bug 改不完", "再撑一下", "今天也得加班",
+    "需求又变了", "代码跑起来了…先别问怎么跑的", "再来一杯咖啡",
+    "这行代码我昨天写的？", "测试环境又挂了", "差一个分号",
+  ],
+  Tired: [
+    "眼皮好沉", "撑不住了", "几点了", "让我趴五分钟",
+    "眼睛要瞎了", "腰已经不是我的了", "再撑一个 PR…", "咖啡因耗尽了",
+  ],
+  Exhausted: [
+    "我废了", "需要躺一会", "别叫我了", "已失去战斗能力",
+    "给我一张床", "再见职场", "尸体已凉", "下班即天堂",
+  ],
+  Overworked: [
+    "不行了", "救护车…", "到极限了", "心脏不太对劲",
+    "工位就是我的坟墓", "我已经30小时没合眼了", "需要抢救", "写得我想吐",
+  ],
+  Idle: [
+    "带薪摸鱼", "老板没在看", "我瘫一会儿", "假装在思考",
+    "其实是发呆", "摸鱼是生产力的副产品", "再刷五分钟", "今天不想努力了",
+  ],
+  NightShift: [
+    "zzZ", "夜班双倍，值了", "天怎么亮了", "凌晨三点还在 push",
+    "我的肝啊", "独守空工位", "外卖小哥都睡了", "凌晨的键盘声真好听",
+  ],
+  Excited: [
+    "冲冲冲", "需求好急！", "今天状态不错", "灵感来了",
+    "我能再写五百年", "状态拉满", "产品经理说得对！", "这个 bug 我能修",
+  ],
+  Focused: [
+    "别打扰我", "进入心流了", "嘘…在想问题", "这段逻辑终于通了",
+    "别打断我", "沉浸中", "我好像懂了", "再给我十分钟",
+  ],
+  Chaotic: [
+    "甲方又改需求", "我在切哪个窗口", "信息过载", "git 冲突了救命",
+    "谁的锅", "时间线全乱了", "十个会议等我开", "需求文档自相矛盾",
+  ],
+  Happy: [
+    "交付了！", "终于能睡了", "下班！", "这个 bug 修好了",
+    "奖金到账美滋滋", "老板夸我了", "今天不用加班！", "上线无事故",
+  ],
 };
 const BUBBLE_WEIGHT = {
   Exhausted: 0.8,
   Overworked: 0.8,
-  Happy: 0.8,
+  Happy: 0.85,
   Tired: 0.5,
   NightShift: 0.5,
   Excited: 0.5,
-  Working: 0.3,
-  Idle: 0.3,
-  Focused: 0.3,
-  Chaotic: 0.5,
+  Working: 0.4,
+  Idle: 0.4,
+  Focused: 0.35,
+  Chaotic: 0.6,
 };
 let bubbleTimer = null;
 let lastBubbleText = "";
@@ -599,6 +600,11 @@ listen("menu/hide-1h", () => {
   invoke("hide_for_one_hour").catch((e) => console.error("hide", e));
 });
 
+// 右键菜单「掉下去」→ 触发掉落物理
+listen("menu/fall", () => {
+  startFallIfNeeded();
+});
+
 // 换皮肤（右键菜单触发）
 listen("skin-switched", async (event) => {
   const skinName = event.payload;
@@ -652,13 +658,37 @@ const barStamina = document.getElementById("bar-stamina");
 const barMood = document.getElementById("bar-mood");
 const numSavings = document.getElementById("num-savings");
 const numWage = document.getElementById("num-wage");
+const floatGain = document.getElementById("float-gain");
+let lastSavings = 0;
+let gainTimer = null;
 
 listen("stats-update", (event) => {
   const s = event.payload;
-  if (barStamina) barStamina.style.width = `${Math.max(0, Math.min(100, s.stamina))}%`;
-  if (barMood) barMood.style.width = `${Math.max(0, Math.min(100, s.mood))}%`;
-  if (numSavings) numSavings.textContent = Math.floor(s.savings);
+  if (barStamina) {
+    barStamina.style.width = `${Math.max(0, Math.min(100, s.stamina))}%`;
+    barStamina.classList.toggle("low", s.stamina < 30);
+  }
+  if (barMood) {
+    barMood.style.width = `${Math.max(0, Math.min(100, s.mood))}%`;
+    barMood.classList.toggle("low", s.mood < 30);
+  }
   if (numWage) numWage.textContent = s.hourly_wage.toFixed(0);
+
+  // 存款增加特效：检测增量，飘 "+N"
+  const newSavings = Math.floor(s.savings);
+  if (numSavings) numSavings.textContent = newSavings;
+  const gain = newSavings - lastSavings;
+  if (gain > 0 && floatGain) {
+    floatGain.textContent = `+${gain}`;
+    floatGain.classList.remove("show");
+    void floatGain.offsetWidth; // 触发重绘，重启动画
+    floatGain.classList.add("show");
+    // 存款数字金色高亮
+    numSavings.classList.add("gain");
+    clearTimeout(gainTimer);
+    gainTimer = setTimeout(() => numSavings.classList.remove("gain"), 600);
+  }
+  lastSavings = newSavings;
 });
 
 // ===== 启动（顶层 await，target=esnext 支持） =====
