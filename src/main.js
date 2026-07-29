@@ -1,12 +1,17 @@
-// Overworked 前端 —— 桌宠像素打工仔 渲染引擎
+// Overworked 前端 —— 皮肤系统播放器
 //
-// 设计红线（见 overworked_design_principles）：
-// - 红线 1（不爹味）：冒泡只反应不教育，3 秒消失
-// - 红线 2（不暴露数值）：前端只收 ExpressionPayload（渲染指令），拿不到体力/心情/存款
-// - 红线 3（不抢焦点）：透明留白区点击穿透；不弹窗，右键菜单极简
+// 架构（"约定大于配置"）：
+//   skins/<皮肤名>/<动作>/1.png 2.png...  ← 用户按命名放图即可
+//   Rust 扫描目录 → list_skins 返回结构 → 前端加载帧 → 播放
 //
-// 渲染策略：requestAnimationFrame 持续渲染，每帧应用 payload 特效。
-// "一张图变桌宠"：优先加载用户图 (assets/pet.png)，失败则画默认像素小人。
+// 动作分两类：
+//   状态动作（idle/working/tired/...）：循环播放，由 ExpressionPayload 驱动
+//   一次性动作（poke/drag/walk/jump）：播放完回当前状态
+//
+// 红线守护：
+// - 红线 1：冒泡只反应不教育，3 秒消失
+// - 红线 2：前端只收渲染指令，拿不到体力/心情/存款
+// - 红线 3：不弹窗，右键菜单极简
 
 const { listen } = window.__TAURI__.event;
 const { invoke } = window.__TAURI__.core;
@@ -17,11 +22,185 @@ const canvas = document.getElementById("pet");
 const ctx = canvas.getContext("2d");
 ctx.imageSmoothingEnabled = false;
 
-// ===== 角色矩形（用于点击穿透的碰撞检测）=====
-// Canvas 钉在窗口底部居中：窗口 160 宽，Canvas 96 宽，左边距 32，底部 0
-const PET_RECT = { left: 32, top: 104, right: 128, bottom: 200 };
+// ===== 状态映射：Expression → 动作名 =====
+// 不在表里的表情 fallback 到 idle（交互动作不走这个映射）
+const EXPR_TO_ACTION = {
+  Working: "working",
+  Idle: "idle",
+  Tired: "tired",
+  Exhausted: "exhausted",
+  Overworked: "overworked",
+  NightShift: "nightshift",
+  Happy: "happy",
+  Excited: "working", // Excited 没有专属动作，用 working
+  Focused: "working",
+  Chaotic: "working",
+};
 
-// ===== 状态：当前表情的表现层指令 =====
+// ===== 皮肤数据 =====
+let currentSkin = "default";
+let skinInfo = null; // { name, actions: { idle: {frames:3}, ... } }
+let frameCache = {}; // { "idle": [Image, Image, ...], "working": [...], ... }
+
+/** 加载一个皮肤的所有帧（通过 Rust 读文件转 base64） */
+async function loadSkin(skinName) {
+  const skins = await invoke("list_skins");
+  const info = skins.find((s) => s.name === skinName) || skins[0];
+  if (!info) {
+    console.error("无可用皮肤");
+    return;
+  }
+  skinInfo = info;
+  currentSkin = info.name;
+  frameCache = {};
+
+  // 并行加载所有动作的所有帧
+  const tasks = [];
+  for (const [action, meta] of Object.entries(info.actions)) {
+    frameCache[action] = [];
+    for (let f = 1; f <= meta.frames; f++) {
+      const idx = f - 1;
+      tasks.push(
+        invoke("read_skin_frame", { skin: info.name, action, frame: f }).then((dataUrl) => {
+          if (dataUrl) {
+            const img = new Image();
+            img.src = dataUrl;
+            frameCache[action][idx] = img;
+          }
+        })
+      );
+    }
+  }
+  await Promise.all(tasks);
+  console.log(`[skin] 加载皮肤 ${info.name}：${Object.keys(info.actions).length} 个动作`);
+}
+
+/** 取某动作的帧序列（缺失 fallback 到 idle） */
+function getFrames(action) {
+  return frameCache[action] || frameCache.idle || [];
+}
+
+// ===== 动作状态机 =====
+let currentState = "idle"; // 当前状态动作（由 ExpressionPayload 驱动）
+let oneShotAction = null; // 当前一次性动作（poke/drag/walk/jump），null=无
+let oneShotFrame = 0;
+let oneShotLoop = 0; // 当前一次性动作已播放的轮数
+let stateFrame = 0;
+let lastFrameTime = 0;
+const FRAME_INTERVAL = 200; // 5 fps，稍快让动作更流畅
+
+// 一次性动作的播放轮数（让 walk/jump 持续够久能看清）
+const ONE_SHOT_LOOPS = {
+  poke: 1,
+  drag: 999, // 持续到 mouseup
+  walk: 3,
+  jump: 2,
+};
+
+// 一次性动作触发
+function triggerOneShot(action) {
+  const frames = getFrames(action);
+  if (frames.length === 0) {
+    console.warn("[action] 动作无帧:", action);
+    return;
+  }
+  oneShotAction = action;
+  oneShotFrame = 0;
+  oneShotLoop = 0;
+  lastFrameTime = performance.now();
+}
+
+// 按住类动作（poke/drag）：触发后循环播放，直到 endHoldAction
+// 复用 oneShotAction 机制，但标记为 hold，渲染时不计入轮数
+let holdAction = false;
+function triggerHoldAction(action) {
+  const frames = getFrames(action);
+  if (frames.length === 0) return;
+  oneShotAction = action;
+  oneShotFrame = 0;
+  holdAction = true; // 标记：不按轮数结束，等 endHoldAction
+  lastFrameTime = performance.now();
+}
+function endHoldAction() {
+  if (holdAction) {
+    oneShotAction = null;
+    holdAction = false;
+  }
+}
+
+// ===== walk：窗口平移 + 侧面动画 =====
+// walk 触发时，窗口在屏幕上左右平移，角色播侧面走路帧。
+// 走到一定距离后反向，持续若干秒后回状态。
+let walkTimer = null;
+let walkDir = 1; // 1=向右, -1=向左
+
+async function startWalking() {
+  const frames = getFrames("walk");
+  if (frames.length === 0) return;
+  // 设为持续动作（hold 模式，循环播放侧面帧）
+  oneShotAction = "walk";
+  oneShotFrame = 0;
+  holdAction = true;
+  lastFrameTime = performance.now();
+
+  // 随机初始方向
+  walkDir = Math.random() < 0.5 ? 1 : -1;
+
+  // 窗口平移：每 80ms 移动 4 像素，走约 3 秒后停
+  const SPEED = 4; // 每次移动像素
+  const INTERVAL = 80;
+  const DURATION = 3000; // 走 3 秒
+  const MAX_OFFSET = 120; // 单方向最大偏移
+  let offset = 0;
+  const startTime = performance.now();
+
+  // 先记录起始位置
+  let basePos;
+  try {
+    basePos = await win.outerPosition();
+  } catch (e) {
+    console.error("walk: 获取位置失败", e);
+    return;
+  }
+
+  // 物理坐标的缩放因子（DPI）
+  const scaleFactor = await win.scaleFactor().catch(() => 1);
+
+  walkTimer = setInterval(async () => {
+    if (performance.now() - startTime > DURATION) {
+      stopWalking();
+      return;
+    }
+    offset += walkDir * SPEED;
+    // 到达边界反向
+    if (Math.abs(offset) > MAX_OFFSET) {
+      walkDir *= -1;
+      offset += walkDir * SPEED;
+    }
+    try {
+      // 用物理坐标直接设（outerPosition 返回物理坐标）
+      const physX = basePos.x + Math.round(offset * scaleFactor);
+      const physY = basePos.y;
+      const { PhysicalPosition } = window.__TAURI__.window;
+      await win.setPosition(new PhysicalPosition(physX, physY));
+    } catch (e) {
+      console.error("walk move", e);
+    }
+  }, INTERVAL);
+}
+
+function stopWalking() {
+  if (walkTimer) {
+    clearInterval(walkTimer);
+    walkTimer = null;
+  }
+  endHoldAction(); // 结束 walk 动画，回状态
+}
+
+// 随机生动动作（walk/jump）的下次触发时间
+let nextAmbient = performance.now() + 15000 + Math.random() * 15000;
+
+// ===== ExpressionPayload（叠加特效，从后端接收） =====
 let currentPayload = {
   expression: "Working",
   brightness: 1.0,
@@ -31,61 +210,44 @@ let currentPayload = {
   bounce: "none",
 };
 
-// ===== 用户图加载（"一张图变桌宠"主路径） =====
-let petImage = null;
-const img = new Image();
-img.onload = () => {
-  petImage = img;
-};
-img.onerror = () => {
-  /* 无用户图，使用默认像素小人 */
-};
-img.src = "assets/pet.png";
-
-// ===== 待机微动状态 =====
-let blinkUntil = 0; // 眨眼结束时间戳，0=不眨
-let nextBlinkAt = performance.now() + 3000 + Math.random() * 2000; // 下次眨眼
-let shiftX = 0; // 换重心偏移（-1/0/1）
-let shiftUntil = 0; // 换重心结束时间
-let nextShiftAt = performance.now() + 8000 + Math.random() * 4000; // 下次换重心
-
-// ===== 点击穿透（暂不启用） =====
-// Tauri 的 set_ignore_cursor_events 是全窗口开关，动态切换有死锁风险
-// （开了穿透就收不到 mousemove 切回来）。MVP 阶段优先保证角色可交互，
-// 透明留白区会挡下层——这个代价可接受。穿透留到下迭代用 Rust 全局钩子重做。
-// Rust 侧 set_cursor_passthrough command 保留备用。
-
-// ===== 单击 poke / 拖动分离 =====
-// mousedown 记录位置和时间；mouseup 时若移动小且时间短=单击poke；
-// 移动超过阈值=触发拖动 startDragging。
+// ===== 交互：单击 poke / 拖动分离 =====
+// 拖动用 Tauri startDragging（原生窗口拖动）；poke 是短按未移动。
+// 关键：startDragging 后 Tauri 接管鼠标，后续 mousemove/mouseup 可能收不到，
+// 所以一旦判定为拖动就立即 return，不再依赖后续事件。
 let mouseDown = null;
 canvas.addEventListener("mousedown", (e) => {
-  if (e.button !== 0) return; // 只处理左键
+  if (e.button !== 0) return;
   mouseDown = { x: e.screenX, y: e.screenY, t: performance.now(), dragged: false };
+  // 按下即触发 poke 持续动作（按住保持，松开结束）
+  triggerHoldAction("poke");
 });
 
-document.addEventListener("mousemove", (e) => {
+canvas.addEventListener("mousemove", (e) => {
   if (!mouseDown || mouseDown.dragged) return;
   const dx = e.screenX - mouseDown.x;
   const dy = e.screenY - mouseDown.y;
-  if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-    // 超过阈值，开始拖动窗口
+  if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+    // 移动超过阈值 → 切换为拖动（结束 poke，开始拖窗口）
     mouseDown.dragged = true;
+    endHoldAction();
     win.startDragging();
   }
 });
 
 canvas.addEventListener("mouseup", (e) => {
-  if (e.button !== 0 || !mouseDown) return;
-  const dt = performance.now() - mouseDown.t;
-  // 短按且未拖动 = poke
-  if (!mouseDown.dragged && dt < 400) {
-    invoke("poke_pet").catch((err) => console.error("poke", err));
-  }
+  if (e.button !== 0) return;
+  // 松开 → 结束 poke/drag，回当前状态
+  endHoldAction();
   mouseDown = null;
 });
 
-// ===== 右键菜单（PRD 三项，禁掉 webview 默认菜单） =====
+canvas.addEventListener("mouseleave", () => {
+  // 鼠标离开也结束（避免卡住）
+  endHoldAction();
+  mouseDown = null;
+});
+
+// ===== 右键菜单 =====
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   invoke("show_context_menu").catch((err) => console.error("menu", err));
@@ -93,73 +255,100 @@ canvas.addEventListener("contextmenu", (e) => {
 
 // ===== 渲染主循环 =====
 function render(now) {
-  const t = now / 1000;
+  // 帧推进
+  if (now - lastFrameTime >= FRAME_INTERVAL) {
+    lastFrameTime = now;
 
-  // 待机微动判定
-  updateMicroAnim(now);
+    if (oneShotAction) {
+      const frames = getFrames(oneShotAction);
+      oneShotFrame++;
+      if (oneShotFrame >= frames.length) {
+        if (holdAction) {
+          // 按住类动作（poke）：循环播放，不结束
+          oneShotFrame = 0;
+        } else {
+          // 一次性动作：按轮数结束
+          const maxLoops = ONE_SHOT_LOOPS[oneShotAction] ?? 1;
+          oneShotLoop++;
+          if (oneShotLoop >= maxLoops) {
+            oneShotAction = null;
+          } else {
+            oneShotFrame = 0;
+          }
+        }
+      }
+    } else {
+      // 状态动作：循环推进
+      const frames = getFrames(currentState);
+      if (frames.length > 0) {
+        stateFrame = (stateFrame + 1) % frames.length;
+      }
+    }
+  }
 
-  // 抖动偏移
-  const { dx: bounceDx, dy: bounceDy } = computeBounce(currentPayload.bounce, t);
+  // 随机触发 walk/jump（无一次性动作时）
+  if (!oneShotAction && !holdAction && now >= nextAmbient) {
+    if (Math.random() < 0.5) {
+      startWalking(); // walk：窗口平移 + 侧面动画
+    } else {
+      triggerOneShot("jump");
+    }
+    nextAmbient = now + 15000 + Math.random() * 20000;
+  }
 
+  // 决定当前要画的帧
+  let imgToDraw = null;
+  if (oneShotAction) {
+    const frames = getFrames(oneShotAction);
+    imgToDraw = frames[Math.min(oneShotFrame, frames.length - 1)];
+  } else {
+    const frames = getFrames(currentState);
+    imgToDraw = frames[stateFrame % Math.max(1, frames.length)];
+  }
+
+  // 渲染
   ctx.clearRect(0, 0, 96, 96);
   ctx.globalAlpha = currentPayload.opacity;
 
-  // 滤镜：亮度 + 色调
-  const filterParts = [];
-  if (currentPayload.brightness !== 1.0) {
-    filterParts.push(`brightness(${currentPayload.brightness})`);
+  // 叠加特效（仅状态动作期间；一次性动作暂停特效，动作本身已表达情绪）
+  let filterStr = "none";
+  let bounceDx = 0;
+  let bounceDy = 0;
+  if (!oneShotAction) {
+    const filterParts = [];
+    if (currentPayload.brightness !== 1.0) {
+      filterParts.push(`brightness(${currentPayload.brightness})`);
+    }
+    if (currentPayload.tint) {
+      filterParts.push("sepia(1) saturate(2)");
+      filterParts.push(`hue-rotate(${rgbToHueRotate(currentPayload.tint)}deg)`);
+    }
+    filterStr = filterParts.join(" ") || "none";
+    const b = computeBounce(currentPayload.bounce, now / 1000);
+    bounceDx = b.dx;
+    bounceDy = b.dy;
   }
-  if (currentPayload.tint) {
-    filterParts.push("sepia(1) saturate(2)");
-    filterParts.push(`hue-rotate(${rgbToHueRotate(currentPayload.tint)}deg)`);
-  }
-  ctx.filter = filterParts.join(" ") || "none";
+  ctx.filter = filterStr;
 
-  // 居中 + 旋转 + 抖动 + 换重心偏移
-  ctx.save();
-  ctx.translate(48 + bounceDx + shiftX, 48 + bounceDy);
-  ctx.rotate(currentPayload.rotation);
-
-  if (petImage) {
-    const size = 64;
-    ctx.drawImage(petImage, -size / 2, -size / 2, size, size);
+  if (imgToDraw && imgToDraw.complete && imgToDraw.naturalWidth > 0) {
+    ctx.save();
+    ctx.translate(48 + bounceDx, 48 + bounceDy);
+    if (!oneShotAction) {
+      ctx.rotate(currentPayload.rotation); // 一次性动作不旋转
+    }
+    // 32×32 放大到 64×64 居中
+    ctx.drawImage(imgToDraw, -32, -32, 64, 64);
+    ctx.restore();
   } else {
-    drawDefaultPet(currentPayload.expression, t, now);
+    // 帧未加载完，画占位
+    ctx.fillStyle = "#6b7280";
+    ctx.fillRect(16, 16, 64, 64);
   }
-  ctx.restore();
 
   ctx.filter = "none";
   ctx.globalAlpha = 1.0;
 
   requestAnimationFrame(render);
-}
-
-/** 更新待机微动状态（眨眼 + 换重心） */
-function updateMicroAnim(now) {
-  // 眨眼：到时间触发，持续 150ms
-  if (blinkUntil === 0 && now >= nextBlinkAt) {
-    blinkUntil = now + 150;
-  }
-  if (blinkUntil > 0 && now > blinkUntil) {
-    blinkUntil = 0;
-    nextBlinkAt = now + 3000 + Math.random() * 3000;
-  }
-  // 换重心：仅在 Working/Focused 时（干活中调整坐姿）
-  const expr = currentPayload.expression;
-  if ((expr === "Working" || expr === "Focused") && shiftUntil === 0 && now >= nextShiftAt) {
-    shiftX = Math.random() < 0.5 ? -1 : 1;
-    shiftUntil = now + 2000;
-  }
-  if (shiftUntil > 0 && now > shiftUntil) {
-    shiftX = 0;
-    shiftUntil = 0;
-    nextShiftAt = now + 8000 + Math.random() * 6000;
-  }
-}
-
-/** 是否正在眨眼 */
-function isBlinking(now) {
-  return blinkUntil > 0 && now < blinkUntil;
 }
 
 function computeBounce(kind, t) {
@@ -183,149 +372,7 @@ function rgbToHueRotate([r, g, b]) {
   return 0;
 }
 
-/**
- * 默认像素打工仔（无用户图时兜底）。
- * 含打工细节：工牌/领带/汗滴/黑眼圈/腮红（按表情触发）。
- */
-function drawDefaultPet(expression, t, now) {
-  const breath = Math.round(Math.sin(t * Math.PI)) | 0; // 呼吸 0/1
-  const blinking = isBlinking(now);
-
-  // Office 灰调
-  const SKIN = "#f1c27d";
-  const SHIRT = "#4b5563";
-  const TIE = "#7f1d1d"; // 暗红领带
-  const BADGE = "#fef3c7"; // 米白领牌
-  const DARK = "#1f2937";
-  const WHITE = "#ffffff";
-
-  const headX = -8;
-  const headY = -22 + breath;
-  const bodyX = -10;
-  const bodyY = -8 + breath;
-
-  // 身体（衬衫）
-  ctx.fillStyle = SHIRT;
-  ctx.fillRect(bodyX, bodyY, 20, 18);
-
-  // 领带（从领口向下）
-  ctx.fillStyle = TIE;
-  ctx.fillRect(-1, bodyY + 2, 2, 10);
-
-  // 工牌（左胸）：白底 + 黑边框（用四条线画边框，避免 strokeStyle 混淆）
-  ctx.fillStyle = BADGE;
-  ctx.fillRect(bodyX + 2, bodyY + 4, 4, 4);
-  ctx.fillStyle = DARK;
-  ctx.fillRect(bodyX + 2, bodyY + 4, 4, 1); // 上边
-  ctx.fillRect(bodyX + 2, bodyY + 7, 4, 1); // 下边
-  ctx.fillRect(bodyX + 2, bodyY + 4, 1, 4); // 左边
-  ctx.fillRect(bodyX + 5, bodyY + 4, 1, 4); // 右边
-  // 工牌内一个小点（照片占位）
-  ctx.fillRect(bodyX + 3, bodyY + 5, 2, 1);
-
-  // 领口
-  ctx.fillStyle = WHITE;
-  ctx.fillRect(-2, bodyY, 4, 2);
-
-  // 头
-  ctx.fillStyle = SKIN;
-  ctx.fillRect(headX, headY, 16, 14);
-
-  // 头发
-  ctx.fillStyle = DARK;
-  ctx.fillRect(headX, headY, 16, 3);
-
-  // 黑眼圈（NightShift/Tired/Overworked）
-  if (expression === "NightShift" || expression === "Tired" || expression === "Overworked") {
-    ctx.fillStyle = "rgba(76, 29, 149, 0.4)"; // 紫黑眼圈
-    ctx.fillRect(headX + 2, headY + 7, 5, 2);
-    ctx.fillRect(headX + 9, headY + 7, 5, 2);
-  }
-
-  // 腮红（Happy/Excited）
-  if (expression === "Happy" || expression === "Excited") {
-    ctx.fillStyle = "rgba(244, 114, 182, 0.6)"; // 粉
-    ctx.fillRect(headX + 1, headY + 8, 2, 2);
-    ctx.fillRect(headX + 13, headY + 8, 2, 2);
-  }
-
-  // 眼睛 + 嘴（按表情；眨眼时画一线）
-  drawFace(expression, headX, headY, blinking);
-
-  // 汗滴（Tired/Overworked/Excited）
-  if (expression === "Tired" || expression === "Overworked" || expression === "Excited") {
-    ctx.fillStyle = "#60a5fa"; // 蓝汗滴
-    ctx.fillRect(headX + 13, headY - 3, 2, 3);
-    ctx.fillRect(headX + 14, headY - 1, 1, 1);
-  }
-
-  // 手
-  ctx.fillStyle = SKIN;
-  ctx.fillRect(bodyX - 2, bodyY + 6, 3, 6);
-  ctx.fillRect(bodyX + 19, bodyY + 6, 3, 6);
-}
-
-/** 按表情画眼睛和嘴。眨眼时画一条横线代替眼睛。 */
-function drawFace(expression, hx, hy, blinking) {
-  const DARK = "#1f2937";
-  const eyeY = hy + 6;
-  const leftEyeX = hx + 3;
-  const rightEyeX = hx + 10;
-
-  if (blinking) {
-    // 眨眼：两条短线
-    ctx.fillStyle = DARK;
-    ctx.fillRect(leftEyeX, eyeY + 1, 3, 1);
-    ctx.fillRect(rightEyeX, eyeY + 1, 3, 1);
-    ctx.fillRect(hx + 6, hy + 11, 4, 1); // 嘴保持
-    return;
-  }
-
-  switch (expression) {
-    case "Exhausted":
-      ctx.fillStyle = DARK;
-      drawX(leftEyeX, eyeY);
-      drawX(rightEyeX, eyeY);
-      ctx.fillRect(hx + 6, hy + 10, 4, 3); // O 嘴
-      break;
-    case "Tired":
-    case "Overworked":
-      ctx.fillStyle = DARK;
-      ctx.fillRect(leftEyeX, eyeY + 1, 3, 1);
-      ctx.fillRect(rightEyeX, eyeY + 1, 3, 1);
-      ctx.fillRect(hx + 5, hy + 11, 1, 1);
-      ctx.fillRect(hx + 7, hy + 10, 1, 1);
-      ctx.fillRect(hx + 9, hy + 11, 1, 1);
-      break;
-    case "Happy":
-    case "Excited":
-      ctx.fillStyle = DARK;
-      ctx.fillRect(leftEyeX + 1, eyeY, 1, 1);
-      ctx.fillRect(leftEyeX, eyeY + 1, 3, 1);
-      ctx.fillRect(rightEyeX + 1, eyeY, 1, 1);
-      ctx.fillRect(rightEyeX, eyeY + 1, 3, 1);
-      ctx.fillRect(hx + 5, hy + 10, 1, 1);
-      ctx.fillRect(hx + 6, hy + 11, 4, 1);
-      ctx.fillRect(hx + 10, hy + 10, 1, 1);
-      break;
-    default:
-      ctx.fillStyle = DARK;
-      ctx.fillRect(leftEyeX, eyeY, 3, 3);
-      ctx.fillRect(rightEyeX, eyeY, 3, 3);
-      ctx.fillRect(hx + 6, hy + 11, 4, 1);
-  }
-}
-
-function drawX(x, y) {
-  ctx.fillStyle = "#1f2937";
-  ctx.fillRect(x, y, 1, 1);
-  ctx.fillRect(x + 2, y, 1, 1);
-  ctx.fillRect(x + 1, y + 1, 1, 1);
-  ctx.fillRect(x, y + 2, 1, 1);
-  ctx.fillRect(x + 2, y + 2, 1, 1);
-}
-
-// ===== 冒泡系统（红线 1：只反应不教育，3 秒消失；冷却 + 权重） =====
+// ===== 冒泡系统 =====
 const bubbleEl = document.getElementById("bubble");
 const BUBBLE_LINES = {
   Working: ["需求好急", "这个 bug 改不完", "再撑一下"],
@@ -339,8 +386,6 @@ const BUBBLE_LINES = {
   Chaotic: ["甲方又改需求", "我在切哪个窗口", "信息过载"],
   Happy: ["交付了！", "终于能睡了", "下班！"],
 };
-
-// 重要状态高触发率，常态低触发率
 const BUBBLE_WEIGHT = {
   Exhausted: 0.8,
   Overworked: 0.8,
@@ -353,30 +398,25 @@ const BUBBLE_WEIGHT = {
   Focused: 0.3,
   Chaotic: 0.5,
 };
-
 let bubbleTimer = null;
 let lastBubbleText = "";
 let lastBubbleTime = 0;
-const BUBBLE_COOLDOWN = 30000; // 同文案 30 秒冷却
+const BUBBLE_COOLDOWN = 30000;
 
 function showBubble(expression, forceText = null) {
   const lines = BUBBLE_LINES[expression];
   if (!lines || lines.length === 0) return;
   const now = Date.now();
-
   let text = forceText;
   if (!text) {
-    // 冷却：同文案 30 秒内不重复
     const available = lines.filter((l) => !(l === lastBubbleText && now - lastBubbleTime < BUBBLE_COOLDOWN));
     const pool = available.length > 0 ? available : lines;
     text = pool[Math.floor(Math.random() * pool.length)];
   }
-
   bubbleEl.textContent = text;
   bubbleEl.classList.add("show");
   lastBubbleText = text;
   lastBubbleTime = now;
-
   clearTimeout(bubbleTimer);
   bubbleTimer = setTimeout(() => bubbleEl.classList.remove("show"), 3000);
 }
@@ -392,24 +432,36 @@ listen("expression-changed", (event) => {
     tint: p.tint,
     bounce: p.bounce,
   };
-  // 按权重随机触发冒泡
-  const weight = BUBBLE_WEIGHT[p.expression] ?? 0.3;
-  if (Math.random() < weight) {
-    showBubble(p.expression);
+  // 状态动作切换（不打断一次性动作）
+  const newAction = EXPR_TO_ACTION[p.expression] || "idle";
+  if (newAction !== currentState && !oneShotAction) {
+    currentState = newAction;
+    stateFrame = 0;
+  } else if (oneShotAction) {
+    // 一次性动作期间，记下目标状态，播完后会用
+    currentState = newAction;
   }
+  const weight = BUBBLE_WEIGHT[p.expression] ?? 0.3;
+  if (Math.random() < weight) showBubble(p.expression);
 });
 
-// 后端主动冒泡（如"关于"菜单）
 listen("bubble-show", (event) => {
   if (typeof event.payload === "string") {
     showBubble(currentPayload.expression, event.payload);
   }
 });
 
-// 菜单"暂时消失1小时"事件 → 调用隐藏 command
 listen("menu/hide-1h", () => {
   invoke("hide_for_one_hour").catch((e) => console.error("hide", e));
 });
 
-// 启动渲染
+// 换皮肤（右键菜单触发）
+listen("skin-switched", async (event) => {
+  const skinName = event.payload;
+  await loadSkin(skinName);
+  stateFrame = 0;
+});
+
+// ===== 启动（顶层 await，target=esnext 支持） =====
+await loadSkin("default");
 requestAnimationFrame(render);

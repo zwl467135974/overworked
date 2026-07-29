@@ -16,6 +16,7 @@
 mod engine;
 mod rendering_bridge;
 mod sensing;
+mod skin;
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -23,8 +24,9 @@ use std::time::Duration;
 use engine::PetState;
 use rendering_bridge::Expression;
 use sensing::{BehaviorSensor, StubSensor};
+use skin::scan_all_skins;
 use tauri::async_runtime;
-use tauri::menu::{ContextMenu, MenuBuilder, MenuItem, PredefinedMenuItem};
+use tauri::menu::{ContextMenu, MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 use tokio::time::sleep;
 
@@ -56,11 +58,10 @@ fn set_cursor_passthrough(window: tauri::WebviewWindow, ignore: bool) -> Result<
         .map_err(|e| e.to_string())
 }
 
-/// 显示右键菜单（PRD 三项：暂时消失1小时 / 关于 / 退出）。
+/// 显示右键菜单（PRD 三项 + 换皮肤动态子菜单）。
 #[tauri::command]
 fn show_context_menu(window: tauri::WebviewWindow) {
     if let Ok(menu) = state_menu(&window.app_handle()) {
-        // ContextMenu::popup 要 Window，WebviewWindow 通过 deref 取底层 Window
         let _ = menu.popup(window.as_ref().window());
     }
 }
@@ -80,17 +81,35 @@ fn hide_for_one_hour(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Res
     Ok(())
 }
 
-/// 构建右键菜单（启动时构建一次，避免每次右键重建）。
+/// 构建右键菜单（每次右键动态构建，因为皮肤列表会变）。
 fn state_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let hide_1h = MenuItem::with_id(app, "hide_1h", "暂时消失 1 小时", true, None::<&str>)?;
     let about = MenuItem::with_id(app, "about", "关于", true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, None)?;
     let sep = PredefinedMenuItem::separator(app)?;
 
-    MenuBuilder::new(app)
+    // 动态构建"换皮肤"子菜单：扫描 skins/ 目录
+    let skins = scan_all_skins(app);
+    let mut skin_submenu = SubmenuBuilder::new(app, "换皮肤");
+    for skin in &skins {
+        let item_id = format!("skin:{}", skin.name);
+        let item = MenuItem::with_id(app, &item_id, &skin.name, true, None::<&str>)?;
+        skin_submenu = skin_submenu.item(&item);
+    }
+    let skins_item = skin_submenu.build()?;
+
+    let mut builder = MenuBuilder::new(app)
         .item(&hide_1h)
         .item(&sep)
+        .item(&skins_item);
+
+    if !skins.is_empty() {
+        builder = builder.item(&sep);
+    }
+
+    builder
         .item(&about)
+        .item(&sep)
         .item(&quit)
         .build()
 }
@@ -145,21 +164,24 @@ pub fn run() {
             // 右键菜单事件路由
             let app_handle = app.handle().clone();
             app.on_menu_event(move |_handle, event| {
-                match event.id().0.as_str() {
+                let id = event.id().0.as_str();
+                match id {
                     "hide_1h" => {
-                        // 触发隐藏逻辑（通过 emit 让前端 invoke，或直接操作窗口）
                         let _ = app_handle.emit("menu/hide-1h", ());
                     }
                     "about" => {
-                        // 关于：不弹窗（红线 3），用产品自己的语言——冒一句文案
                         let _ = app_handle.emit(
                             "bubble-show",
                             "Overworked v0.1 — 它替你打工，你替它活着",
                         );
                     }
+                    _ if id.starts_with("skin:") => {
+                        // 换皮肤：skin:<name>
+                        let skin_name = id[5..].to_string();
+                        let _ = app_handle.emit("skin-switched", &skin_name);
+                    }
                     _ => {}
                 }
-                // quit 由 PredefinedMenuItem 自动处理，无需 match
             });
 
             Ok(())
@@ -168,7 +190,10 @@ pub fn run() {
             poke_pet,
             set_cursor_passthrough,
             show_context_menu,
-            hide_for_one_hour
+            hide_for_one_hour,
+            skin::list_skins,
+            skin::read_skin_frame,
+            skin::switch_skin
         ])
         .run(tauri::generate_context!())
         .expect("error while running overworked");
