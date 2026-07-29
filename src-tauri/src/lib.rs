@@ -217,11 +217,21 @@ pub fn run() {
                 }
             };
 
-            // 恢复窗口位置
-            if let Some(pos) = save_store.load_window_pos() {
-                if let Some(win) = app.get_webview_window("main") {
-                    use tauri::PhysicalPosition;
+            // 恢复窗口位置（无存档则默认右下角）
+            if let Some(win) = app.get_webview_window("main") {
+                use tauri::PhysicalPosition;
+                if let Some(pos) = save_store.load_window_pos() {
                     let _ = win.set_position(PhysicalPosition::new(pos.x, pos.y));
+                } else {
+                    // 默认右下角：根据主屏幕尺寸算
+                    if let Ok(Some(monitor)) = win.primary_monitor() {
+                        let sw = monitor.size().width as i32;
+                        let sh = monitor.size().height as i32;
+                        // 窗口 160×200，留 20px 边距
+                        let x = sw - 180;
+                        let y = sh - 240;
+                        let _ = win.set_position(PhysicalPosition::new(x, y));
+                    }
                 }
             }
 

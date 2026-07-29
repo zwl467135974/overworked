@@ -194,7 +194,138 @@ function stopWalking() {
     clearInterval(walkTimer);
     walkTimer = null;
   }
-  endHoldAction(); // 结束 walk 动画，回状态
+  endHoldAction();
+}
+
+// ===== 桌面物理交互：掉落 + 底边走（Shimeji 式）=====
+// 拖到空中松开 → 重力下落 + 弹跳 → 落到底边后左右走一段
+const WIN_W = 160;
+const WIN_H = 200;
+
+let physicsTimer = null;
+
+/** 检测窗口是否悬空（不在底边），是则触发掉落 */
+async function startFallIfNeeded() {
+  if (physicsTimer) return;
+  // currentMonitor 是命名空间函数，不在 win 实例上
+  const monitor = await window.__TAURI__.window.currentMonitor().catch(() => null);
+  if (!monitor) {
+    console.warn("[physics] 拿不到 monitor");
+    return;
+  }
+  const screenH = monitor.size.height;
+  const screenW = monitor.size.width;
+  const scaleFactor = monitor.scaleFactor;
+  let pos;
+  try {
+    pos = await win.outerPosition();
+  } catch {
+    console.warn("[physics] 拿不到窗口位置");
+    return;
+  }
+  const winH_phys = Math.round(WIN_H * scaleFactor);
+  const bottomGap = screenH - (pos.y + winH_phys);
+  if (bottomGap > 50) {
+    startFall(pos, screenH, scaleFactor);
+  }
+}
+
+/** 重力下落 + 弹跳。落到底边后触发底边走。 */
+function startFall(startPos, screenH, scaleFactor) {
+  let y = startPos.y;
+  let vy = 0; // 垂直速度（物理像素/帧）
+  const gravity = 2.5; // 重力加速度
+  const groundY = screenH - Math.round(WIN_H * scaleFactor); // 底边着地时的 y
+  let bounces = 0;
+  const maxBounces = 2;
+
+  // 掉落时播 drag 动作（被拽着掉下去的挣扎感）
+  triggerHoldAction("drag");
+
+  physicsTimer = setInterval(async () => {
+    vy += gravity;
+    y += vy;
+    if (y >= groundY) {
+      y = groundY;
+      if (bounces < maxBounces && vy > 8) {
+        // 弹跳：速度反向衰减
+        vy = -Math.round(vy * 0.4);
+        bounces++;
+      } else {
+        // 落定
+        clearInterval(physicsTimer);
+        physicsTimer = null;
+        try {
+          const { PhysicalPosition } = window.__TAURI__.window;
+          await win.setPosition(new PhysicalPosition(startPos.x, groundY));
+        } catch {}
+        invoke("save_window_pos").catch(() => {});
+        endHoldAction();
+        // 落地后沿底边走一段
+        strollOnGround(startPos.x, groundY, screenH, scaleFactor);
+      }
+    }
+    try {
+      const { PhysicalPosition } = window.__TAURI__.window;
+      await win.setPosition(new PhysicalPosition(startPos.x, Math.round(y)));
+    } catch {}
+  }, 16); // ~60fps
+}
+
+/** 落地后沿底边左右走一段 */
+function strollOnGround(startX, groundY, screenW, scaleFactor) {
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  const distance = Math.round((80 + Math.random() * 120) * scaleFactor);
+  let x = startX;
+  let traveled = 0;
+
+  walkDir = dir;
+  triggerHoldAction("walk");
+
+  physicsTimer = setInterval(async () => {
+    const step = Math.round(3 * scaleFactor);
+    x += dir * step;
+    traveled += step;
+    if (x < 0 || x > screenW - WIN_W * scaleFactor || traveled > distance) {
+      clearInterval(physicsTimer);
+      physicsTimer = null;
+      endHoldAction();
+      invoke("save_window_pos").catch(() => {});
+      return;
+    }
+    try {
+      const { PhysicalPosition } = window.__TAURI__.window;
+      await win.setPosition(new PhysicalPosition(x, groundY));
+    } catch {}
+  }, 60);
+}
+
+// ===== 拖动结束检测（轮询法）=====
+// startDragging 后 mouseup 收不到，改用轮询窗口位置：
+// 窗口位置变化=拖动中；停止变化 400ms=拖动结束，触发掉落检测。
+let lastWinPos = null;
+let posStableSince = 0;
+let wasMoving = false;
+
+async function pollDragEnd() {
+  if (physicsTimer) return; // 物理运动中不检测
+  let pos;
+  try {
+    pos = await win.outerPosition();
+  } catch {
+    return;
+  }
+  const moved = lastWinPos && (pos.x !== lastWinPos.x || pos.y !== lastWinPos.y);
+  if (moved) {
+    wasMoving = true;
+    posStableSince = performance.now();
+  } else if (wasMoving && performance.now() - posStableSince > 400) {
+    // 拖动结束
+    wasMoving = false;
+    invoke("save_window_pos").catch(() => {});
+    startFallIfNeeded();
+  }
+  lastWinPos = { x: pos.x, y: pos.y };
 }
 
 // 随机生动动作（walk/jump）的下次触发时间
@@ -240,14 +371,9 @@ canvas.addEventListener("mousemove", (e) => {
 
 canvas.addEventListener("mouseup", (e) => {
   if (e.button !== 0) return;
-  // 松开 → 结束 poke/drag，回当前状态
-  const wasDragged = mouseDown?.dragged;
+  // 拖动结束的检测交给 pollDragEnd（mouseup 在 startDragging 后可能不触发）
   endHoldAction();
   mouseDown = null;
-  // 拖动结束后存窗口位置
-  if (wasDragged) {
-    invoke("save_window_pos").catch(() => {});
-  }
 });
 
 canvas.addEventListener("mouseleave", () => {
@@ -264,6 +390,9 @@ canvas.addEventListener("contextmenu", (e) => {
 
 // ===== 渲染主循环 =====
 function render(now) {
+  // 拖动结束检测（每帧轮询，轮询内部有 400ms 去抖）
+  pollDragEnd();
+
   // 帧推进
   if (now - lastFrameTime >= FRAME_INTERVAL) {
     lastFrameTime = now;
