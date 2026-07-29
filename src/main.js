@@ -501,6 +501,23 @@ listen("preview-action", (event) => {
   }
 });
 
+// 特殊事件：番茄钟完成 → Happy 庆祝
+listen("pomodoro-complete", () => {
+  endHoldAction();
+  triggerOneShot("happy");
+});
+// 进医院 → 强制 exhausted
+listen("hospital-admit", () => {
+  endHoldAction();
+  currentState = "exhausted";
+  stateFrame = 0;
+  previewUntil = performance.now() + 300000; // 冻结5分钟（医院期间不被动覆盖）
+});
+// 出院 → 回正常状态
+listen("hospital-discharge", () => {
+  previewUntil = 0; // 解除冻结，恢复真实感知驱动
+});
+
 // 数值细条更新（红线2 调整后：四属性对前端可见）
 const barStamina = document.getElementById("bar-stamina");
 const barMood = document.getElementById("bar-mood");

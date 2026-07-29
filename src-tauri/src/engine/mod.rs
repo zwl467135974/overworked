@@ -12,4 +12,4 @@ pub mod state;
 // Phase 2 接入事件触发后会用到。暂时 allow unused_imports。
 #[allow(unused_imports)]
 pub use events::{EventBus, GameEvent};
-pub use state::{PetState, StatsPayload};
+pub use state::{PetState, StatsPayload, TickEvent};

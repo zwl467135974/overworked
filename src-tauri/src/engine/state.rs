@@ -8,7 +8,7 @@
 // 数值 → 表情 的映射原则（见 overworked_game_loop）：
 // 区间映射，不是线性映射。数值连续，表情离散。
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::save;
 use crate::rendering_bridge::Expression;
@@ -40,20 +40,37 @@ pub struct PetState {
     savings: f32,
     /// 上一次状态更新时间，用于按时间推进
     last_tick: Instant,
+    /// 连续专注秒数（番茄钟用）。挂机超30秒则清零。
+    focus_seconds: f32,
+    /// 在医院直到何时（None=不在医院）。体力归零触发，5分钟出院。
+    hospital_until: Option<Instant>,
+}
+
+/// 事件结果——apply_sample 可能产生的事件，由调用方 emit 给前端。
+#[derive(Debug, Clone)]
+pub enum TickEvent {
+    /// 番茄钟完成（连续专注25分钟）
+    PomodoroComplete,
+    /// 进医院（体力归零）
+    HospitalAdmit,
+    /// 出院（在医院满5分钟）
+    HospitalDischarge,
 }
 
 impl PetState {
     pub fn new() -> Self {
         Self {
-            stamina: 80.0,        // 起步别太满，让用户能立刻看到反应
-            hourly_wage: 35.0,    // 浮动起点
+            stamina: 80.0,
+            hourly_wage: 35.0,
             mood: 70.0,
             savings: 0.0,
             last_tick: Instant::now(),
+            focus_seconds: 0.0,
+            hospital_until: None,
         }
     }
 
-    /// 从存档快照恢复（重启时用）。last_tick 重置为当前。
+    /// 从存档快照恢复。事件追踪字段重置（不跨会话维持）。
     pub fn from_snapshot(snap: save::StateSnapshot) -> Self {
         Self {
             stamina: snap.stamina,
@@ -61,6 +78,8 @@ impl PetState {
             mood: snap.mood,
             savings: snap.savings,
             last_tick: Instant::now(),
+            focus_seconds: 0.0,
+            hospital_until: None,
         }
     }
 
@@ -98,44 +117,100 @@ impl PetState {
         self.last_tick = Instant::now();
     }
 
-    /// 消费一个 5 秒行为样本，推进四属性。
+    /// 消费一个 5 秒行为样本，推进四属性，可能触发事件。
     ///
-    /// MVP 映射（见 overworked_game_loop 行为→状态表）：
-    /// - 有按键活动 → 体力消耗 + 时薪维持
-    /// - 无活动（挂机）→ 体力恢复
-    /// - 不实现心情/存款的复杂逻辑，留 Phase 2
-    pub fn apply_sample(&mut self, sample: &BehaviorSample) {
+    /// 返回本 tick 产生的事件列表（番茄钟完成/进医院/出院），调用方 emit 给前端。
+    pub fn apply_sample(&mut self, sample: &BehaviorSample) -> Vec<TickEvent> {
         let now = Instant::now();
         let dt = now.duration_since(self.last_tick).as_secs_f32().max(0.1);
         self.last_tick = now;
+        let mut events = Vec::new();
 
-        // 按键活动强度：每秒按键数
-        let keys_per_sec = sample.key_count as f32 / dt;
-
-        if keys_per_sec > 1.0 {
-            // 在打工：体力下降。调到约 2 小时从满到空（每秒 ~0.7 消耗）
-            // keys_per_sec≈4（正常打字）时，每秒消耗约 0.6
-            self.stamina -= (keys_per_sec * 0.15) * dt;
-            // 时薪随产能微涨
-            self.hourly_wage += keys_per_sec * 0.02 * dt;
-            // 存款累积：时薪 × 有效工时（dt 秒）
-            self.savings += self.hourly_wage * dt / 3600.0;
-            // 心情微降（打工累）
-            self.mood -= 0.3 * dt;
-        } else if sample.idle_seconds >= 30 {
-            // 带薪摸鱼：体力恢复（每秒 +1.5，挂机 1 分钟回 90）
-            self.stamina += 1.5 * dt;
-            // 心情回升（摸鱼快乐）
-            self.mood += 0.8 * dt;
-        } else {
-            // 一般空闲（有鼠标动但没打字）：缓慢恢复
-            self.stamina += 0.5 * dt;
+        // ===== 医院检查（优先级最高）=====
+        if let Some(until) = self.hospital_until {
+            if now < until {
+                // 还在医院：维持躺平，不消耗不恢复，直接返回
+                return events;
+            } else {
+                // 出院：恢复60体力（大病初愈，不 满 血）
+                self.hospital_until = None;
+                self.stamina = 60.0;
+                self.mood = (self.mood + 20.0).min(100.0); // 出院心情好转
+                events.push(TickEvent::HospitalDischarge);
+                return events;
+            }
         }
 
-        // 钳制到合法区间
+        // ===== 正常数值推进 =====
+        let keys_per_sec = sample.key_count as f32 / dt;
+        let is_working = keys_per_sec > 1.0;
+        let is_idling = sample.idle_seconds >= 30;
+
+        if is_working {
+            self.stamina -= (keys_per_sec * 0.15) * dt;
+            self.hourly_wage += keys_per_sec * 0.02 * dt;
+            self.savings += self.hourly_wage * dt / 3600.0;
+            self.mood -= 0.3 * dt;
+            // 番茄钟：工作中累加专注时长
+            self.focus_seconds += dt;
+        } else if is_idling {
+            self.stamina += 1.5 * dt;
+            self.mood += 0.8 * dt;
+            // 挂机打断专注
+            self.focus_seconds = 0.0;
+        } else {
+            self.stamina += 0.5 * dt;
+            // 一般空闲不算挂机，专注不清零但也不累加
+        }
+
+        // 钳制
         self.stamina = self.stamina.clamp(0.0, 100.0);
         self.hourly_wage = self.hourly_wage.clamp(15.0, 200.0);
         self.mood = self.mood.clamp(0.0, 100.0);
+
+        // ===== 番茄钟检查 =====
+        const FOCUS_THRESHOLD: f32 = 1500.0; // 25 分钟
+        if self.focus_seconds >= FOCUS_THRESHOLD {
+            self.focus_seconds = 0.0;
+            self.savings += 200.0; // 项目交付奖金
+            self.mood = (self.mood + 15.0).min(100.0); // 交付心情大好
+            events.push(TickEvent::PomodoroComplete);
+        }
+
+        // ===== 过劳送医检查 =====
+        if self.stamina <= 0.0 {
+            self.hospital_until = Some(now + Duration::from_secs(300)); // 5 分钟
+            events.push(TickEvent::HospitalAdmit);
+        }
+
+        events
+    }
+
+    /// 是否在医院（前端/外部查询用，决定是否强制 exhausted）。
+    pub fn is_in_hospital(&self) -> bool {
+        self.hospital_until.is_some()
+    }
+
+    // ===== 调试触发器（右键菜单"事件触发"用，直接产生事件效果） =====
+
+    /// 手动触发番茄钟完成效果。
+    pub fn trigger_pomodoro(&mut self) {
+        self.focus_seconds = 0.0;
+        self.savings += 200.0;
+        self.mood = (self.mood + 15.0).min(100.0);
+    }
+
+    /// 手动触发进医院。
+    pub fn trigger_hospital(&mut self) {
+        self.stamina = 0.0;
+        self.hospital_until = Some(Instant::now() + Duration::from_secs(300));
+    }
+
+    /// 手动触发出院。
+    pub fn trigger_discharge(&mut self) {
+        self.hospital_until = None;
+        self.stamina = 60.0;
+        self.mood = (self.mood + 20.0).min(100.0);
     }
 
     /// 数值 → 表情 的唯一出口。
@@ -143,8 +218,11 @@ impl PetState {
     /// 这就是红线 2 的守门人：调用方拿到的是 Expression，
     /// 拿不到 47.0 这种数字。前端也只能收到表情。
     pub fn expression(&self) -> Expression {
-        // 夜班判断（凌晨 1-5 点）—— 简化：由调用方传入更准，MVP 先内联
-        // TODO: 夜班逻辑移到 events 层，state 只管数值
+        // 在医院：强制躺平（exhausted）
+        if self.is_in_hospital() {
+            return Expression::Exhausted;
+        }
+        // 夜班判断（凌晨 1-5 点）
         if self.is_night_shift() {
             return Expression::NightShift;
         }

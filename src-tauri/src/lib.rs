@@ -22,7 +22,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use engine::save::SaveStore;
-use engine::{PetState, StatsPayload};
+use engine::{PetState, StatsPayload, TickEvent};
 use rendering_bridge::Expression;
 use sensing::{BehaviorSensor, PlatformSensor};
 use skin::scan_all_skins;
@@ -149,6 +149,18 @@ fn state_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
         let item = MenuItem::with_id(app, format!("preview:{a}"), a, true, None::<&str>)?;
         preview_submenu = preview_submenu.item(&item);
     }
+    // 事件触发区（调试用：直接触发番茄钟/进医院，不用等25分钟）
+    let sep3 = PredefinedMenuItem::separator(app)?;
+    let label_event = MenuItem::with_id(app, "label_event", "— 事件触发 —", false, None::<&str>)?;
+    let evt_pomodoro = MenuItem::with_id(app, "event:pomodoro", "番茄钟完成", true, None::<&str>)?;
+    let evt_hospital = MenuItem::with_id(app, "event:hospital", "进医院", true, None::<&str>)?;
+    let evt_discharge = MenuItem::with_id(app, "event:discharge", "出院", true, None::<&str>)?;
+    preview_submenu = preview_submenu
+        .item(&sep3)
+        .item(&label_event)
+        .item(&evt_pomodoro)
+        .item(&evt_hospital)
+        .item(&evt_discharge);
     let preview_item = preview_submenu.build()?;
 
     let mut builder = MenuBuilder::new(app)
@@ -248,8 +260,8 @@ pub fn run() {
                         sensor.sample_and_reset()
                     };
 
-                    // 2. 状态：消费样本，推进四属性
-                    let (expression, snapshot, stats, work_secs, idle_secs) = {
+                    // 2. 状态：消费样本，推进四属性 + 收集事件
+                    let (expression, snapshot, stats, events, work_secs, idle_secs) = {
                         let mut pet = match state.state.lock() {
                             Ok(g) => g,
                             Err(e) => {
@@ -257,13 +269,14 @@ pub fn run() {
                                 continue;
                             }
                         };
-                        pet.apply_sample(&sample);
+                        let events = pet.apply_sample(&sample);
                         let worked = sample.key_count > 5;
                         let idled = sample.idle_seconds >= 30;
                         (
                             pet.expression(),
                             pet.to_snapshot(),
                             pet.to_stats_payload(),
+                            events,
                             if worked { SAMPLE_INTERVAL.as_secs() as i64 } else { 0 },
                             if idled { SAMPLE_INTERVAL.as_secs() as i64 } else { 0 },
                         )
@@ -272,6 +285,24 @@ pub fn run() {
                     // 3. 推送：表现层渲染指令 + 数值面板（红线2 调整后）
                     let _ = app_handle.emit("expression-changed", expression.to_payload());
                     let _ = app_handle.emit("stats-update", stats);
+
+                    // 3b. 处理事件：番茄钟/进医院/出院
+                    for ev in &events {
+                        match ev {
+                            TickEvent::PomodoroComplete => {
+                                let _ = app_handle.emit("pomodoro-complete", ());
+                                let _ = app_handle.emit("bubble-show", "交付了！奖金到账");
+                            }
+                            TickEvent::HospitalAdmit => {
+                                let _ = app_handle.emit("hospital-admit", ());
+                                let _ = app_handle.emit("bubble-show", "不行了…需要躺一会");
+                            }
+                            TickEvent::HospitalDischarge => {
+                                let _ = app_handle.emit("hospital-discharge", ());
+                                let _ = app_handle.emit("bubble-show", "出院了…大病初愈");
+                            }
+                        }
+                    }
 
                     // 4. 每 6 次（30 秒）存档 + 累加统计
                     if tick_count % 6 == 0 {
@@ -317,9 +348,41 @@ pub fn run() {
                         let _ = app_handle.emit("skin-switched", &skin_name);
                     }
                     _ if id.starts_with("preview:") => {
-                        // 动作预览：preview:<action>
                         let action = id[8..].to_string();
                         let _ = app_handle.emit("preview-action", &action);
+                    }
+                    "event:pomodoro" => {
+                        // 调试：直接触发番茄钟效果
+                        let state = app_handle.state::<AppState>();
+                        if let Ok(mut pet) = state.state.lock() {
+                            pet.trigger_pomodoro();
+                        }
+                        let _ = app_handle.emit("pomodoro-complete", ());
+                        let _ = app_handle.emit("bubble-show", "交付了！奖金到账");
+                        let _ = app_handle.emit("stats-update", {
+                            let pet = state.state.lock().unwrap();
+                            pet.to_stats_payload()
+                        });
+                    }
+                    "event:hospital" => {
+                        let state = app_handle.state::<AppState>();
+                        if let Ok(mut pet) = state.state.lock() {
+                            pet.trigger_hospital();
+                        }
+                        let _ = app_handle.emit("hospital-admit", ());
+                        let _ = app_handle.emit("bubble-show", "不行了…需要躺一会");
+                    }
+                    "event:discharge" => {
+                        let state = app_handle.state::<AppState>();
+                        if let Ok(mut pet) = state.state.lock() {
+                            pet.trigger_discharge();
+                        }
+                        let _ = app_handle.emit("hospital-discharge", ());
+                        let _ = app_handle.emit("bubble-show", "出院了…大病初愈");
+                        let _ = app_handle.emit("stats-update", {
+                            let pet = state.state.lock().unwrap();
+                            pet.to_stats_payload()
+                        });
                     }
                     _ => {}
                 }
