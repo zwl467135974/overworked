@@ -219,21 +219,37 @@ pub fn run() {
                 }
             };
 
-            // 恢复窗口位置（无存档则默认右下角）
+            // 恢复窗口位置（无存档或位置在屏幕外 → 默认右下角）
             if let Some(win) = app.get_webview_window("main") {
                 use tauri::PhysicalPosition;
-                if let Some(pos) = save_store.load_window_pos() {
-                    let _ = win.set_position(PhysicalPosition::new(pos.x, pos.y));
-                } else {
-                    // 默认右下角：根据主屏幕尺寸算
+                // 默认右下角
+                let mut default_pos = || -> (i32, i32) {
                     if let Ok(Some(monitor)) = win.primary_monitor() {
-                        let sw = monitor.size().width as i32;
-                        let sh = monitor.size().height as i32;
-                        // 窗口 160×200，留 20px 边距
-                        let x = sw - 180;
-                        let y = sh - 240;
+                        (monitor.size().width as i32 - 180, monitor.size().height as i32 - 240)
+                    } else {
+                        (1740, 840)
+                    }
+                };
+                if let Some(pos) = save_store.load_window_pos() {
+                    // 校验：存的位置是否在屏幕可见范围内
+                    let in_screen = if let Ok(Some(monitor)) = win.current_monitor() {
+                        let mw = monitor.size().width as i32;
+                        let mh = monitor.size().height as i32;
+                        // 允许部分超出，但至少要有 50px 在屏幕内
+                        pos.x > -150 && pos.x < mw - 50 && pos.y > -180 && pos.y < mh - 50
+                    } else {
+                        true // 拿不到屏幕信息就不校验
+                    };
+                    if in_screen {
+                        let _ = win.set_position(PhysicalPosition::new(pos.x, pos.y));
+                    } else {
+                        // 屏幕外 → 拉回右下角
+                        let (x, y) = default_pos();
                         let _ = win.set_position(PhysicalPosition::new(x, y));
                     }
+                } else {
+                    let (x, y) = default_pos();
+                    let _ = win.set_position(PhysicalPosition::new(x, y));
                 }
             }
 
