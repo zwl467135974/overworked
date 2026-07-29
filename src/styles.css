@@ -32,11 +32,11 @@ body {
   bottom: 0;
   width: 96px;
   height: 96px;
-  /* 整个角色区可拖动；poke 走双击触发（drag 会吞单击） */
-  -webkit-app-region: drag;
+  /* 不用 -webkit-app-region: drag（会吞 mousedown，无法检测单击 poke）。
+     拖动改用 JS 的 startDragging()，与单击分离。 */
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  cursor: grab;
+  cursor: pointer; /* 鼠标进角色区（穿透已关）显示手型 */
 }
 
 #pet:active {
