@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use engine::PetState;
 use rendering_bridge::Expression;
-use sensing::{BehaviorSensor, StubSensor};
+use sensing::{BehaviorSensor, PlatformSensor};
 use skin::scan_all_skins;
 use tauri::async_runtime;
 use tauri::menu::{ContextMenu, MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
@@ -35,7 +35,7 @@ const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 
 /// 内部共享状态。Mutex 是因为 tick task 和 command 都要访问 PetState。
 struct AppState {
-    sensor: Mutex<StubSensor>,
+    sensor: Mutex<PlatformSensor>,
     state: Mutex<PetState>,
 }
 
@@ -98,8 +98,33 @@ fn state_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
     }
     let skins_item = skin_submenu.build()?;
 
+    // "动作预览"子菜单：手动触发任意动作看效果（开发/调试用）
+    // 状态动作（切换后会持续，直到下次状态变化）
+    let state_actions = ["idle", "working", "tired", "exhausted", "overworked", "nightshift", "happy"];
+    let oneshot_actions = ["poke", "drag", "walk", "jump"];
+
+    let mut preview_submenu = SubmenuBuilder::new(app, "动作预览");
+    // 状态动作区（用 disabled MenuItem 当分组标签）
+    let label_state = MenuItem::with_id(app, "label_state", "— 状态动作 —", false, None::<&str>)?;
+    preview_submenu = preview_submenu.item(&label_state);
+    for a in state_actions {
+        let item = MenuItem::with_id(app, format!("preview:{a}"), a, true, None::<&str>)?;
+        preview_submenu = preview_submenu.item(&item);
+    }
+    // 一次性动作区
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let label_oneshot = MenuItem::with_id(app, "label_oneshot", "— 交互/生动 —", false, None::<&str>)?;
+    preview_submenu = preview_submenu.item(&sep2).item(&label_oneshot);
+    for a in oneshot_actions {
+        let item = MenuItem::with_id(app, format!("preview:{a}"), a, true, None::<&str>)?;
+        preview_submenu = preview_submenu.item(&item);
+    }
+    let preview_item = preview_submenu.build()?;
+
     let mut builder = MenuBuilder::new(app)
         .item(&hide_1h)
+        .item(&sep)
+        .item(&preview_item)
         .item(&sep)
         .item(&skins_item);
 
@@ -119,7 +144,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
-            sensor: Mutex::new(StubSensor::new()),
+            sensor: Mutex::new(PlatformSensor::new()),
             state: Mutex::new(PetState::new()),
         })
         .setup(|app| {
@@ -179,6 +204,11 @@ pub fn run() {
                         // 换皮肤：skin:<name>
                         let skin_name = id[5..].to_string();
                         let _ = app_handle.emit("skin-switched", &skin_name);
+                    }
+                    _ if id.starts_with("preview:") => {
+                        // 动作预览：preview:<action>
+                        let action = id[8..].to_string();
+                        let _ = app_handle.emit("preview-action", &action);
                     }
                     _ => {}
                 }

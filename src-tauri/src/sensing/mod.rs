@@ -10,7 +10,14 @@
 // 这是红线 A/B/C 的代码体现。
 
 pub mod stub;
+#[cfg(windows)]
+pub mod windows;
 
+#[cfg(windows)]
+pub use windows::WindowsSensor as PlatformSensor;
+#[cfg(not(windows))]
+pub use stub::StubSensor as PlatformSensor;
+#[allow(unused_imports)]
 pub use stub::StubSensor;
 
 /// 5 秒行为样本。所有字段都是聚合值，无法还原用户原始输入。

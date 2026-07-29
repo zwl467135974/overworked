@@ -227,9 +227,13 @@ canvas.addEventListener("mousemove", (e) => {
   const dx = e.screenX - mouseDown.x;
   const dy = e.screenY - mouseDown.y;
   if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-    // 移动超过阈值 → 切换为拖动（结束 poke，开始拖窗口）
+    // 移动超过阈值 → 切换为拖动
     mouseDown.dragged = true;
-    endHoldAction();
+    endHoldAction(); // 结束 poke
+    // 先启动 drag 持续动画（挣扎姿态），再 startDragging
+    // 时序关键：drag 动作设好后，渲染循环会持续播 drag 帧，
+    // 即使 startDragging 接管鼠标也不影响（动画由 RAF 驱动，不依赖鼠标事件）
+    triggerHoldAction("drag");
     win.startDragging();
   }
 });
@@ -333,6 +337,10 @@ function render(now) {
   if (imgToDraw && imgToDraw.complete && imgToDraw.naturalWidth > 0) {
     ctx.save();
     ctx.translate(48 + bounceDx, 48 + bounceDy);
+    // walk 朝左时水平镜像（一套朝右帧，双向走）
+    if (oneShotAction === "walk" && walkDir < 0) {
+      ctx.scale(-1, 1);
+    }
     if (!oneShotAction) {
       ctx.rotate(currentPayload.rotation); // 一次性动作不旋转
     }
@@ -432,14 +440,16 @@ listen("expression-changed", (event) => {
     tint: p.tint,
     bounce: p.bounce,
   };
-  // 状态动作切换（不打断一次性动作）
+  // 状态动作切换（不打断一次性动作；预览模式期间不覆盖）
   const newAction = EXPR_TO_ACTION[p.expression] || "idle";
-  if (newAction !== currentState && !oneShotAction) {
-    currentState = newAction;
-    stateFrame = 0;
-  } else if (oneShotAction) {
-    // 一次性动作期间，记下目标状态，播完后会用
-    currentState = newAction;
+  const inPreview = performance.now() < previewUntil;
+  if (!inPreview) {
+    if (newAction !== currentState && !oneShotAction) {
+      currentState = newAction;
+      stateFrame = 0;
+    } else if (oneShotAction) {
+      currentState = newAction;
+    }
   }
   const weight = BUBBLE_WEIGHT[p.expression] ?? 0.3;
   if (Math.random() < weight) showBubble(p.expression);
@@ -460,6 +470,30 @@ listen("skin-switched", async (event) => {
   const skinName = event.payload;
   await loadSkin(skinName);
   stateFrame = 0;
+});
+
+// 动作预览（右键菜单"动作预览"手动触发）
+const STATE_ACTIONS = ["idle", "working", "tired", "exhausted", "overworked", "nightshift", "happy"];
+let previewUntil = 0; // 预览模式结束时间，期间真实感知不覆盖状态
+listen("preview-action", (event) => {
+  const action = event.payload;
+  // 先清掉当前的一次性/按住动作
+  endHoldAction();
+  oneShotAction = null;
+
+  if (STATE_ACTIONS.includes(action)) {
+    // 状态动作：切换并冻结 15 秒（方便观察），期间真实感知不覆盖
+    currentState = action;
+    stateFrame = 0;
+    previewUntil = performance.now() + 15000;
+  } else if (action === "walk") {
+    startWalking();
+  } else if (action === "poke") {
+    triggerHoldAction("poke");
+  } else {
+    // jump 等一次性动作
+    triggerOneShot(action);
+  }
 });
 
 // ===== 启动（顶层 await，target=esnext 支持） =====
