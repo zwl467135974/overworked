@@ -5,10 +5,11 @@
 // 任何对外暴露都只走 expression()，不暴露数字。
 
 pub mod events;
+pub mod save;
 pub mod state;
 
 // events 的 EventBus/GameEvent 在 MVP 骨架阶段暂未被主循环使用，
 // Phase 2 接入事件触发后会用到。暂时 allow unused_imports。
 #[allow(unused_imports)]
 pub use events::{EventBus, GameEvent};
-pub use state::PetState;
+pub use state::{PetState, StatsPayload};

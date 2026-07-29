@@ -43,12 +43,66 @@ body {
   cursor: grabbing;
 }
 
+/* ===== 数值细条（红线2 调整后：常驻四属性） ===== */
+/* 克制的小尺寸，不喧宾夺主。放在角色上方、冒泡下方 */
+#stats-panel {
+  position: absolute;
+  left: 16px;
+  bottom: 100px; /* 角色顶部上方 */
+  width: 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 9px;
+  line-height: 1;
+  z-index: 5;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 10px;
+}
+
+.stat-label {
+  width: 20px;
+  color: #6b7280;
+  font-size: 9px;
+}
+
+/* 条形（体力/心情） */
+.stat-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(31, 41, 55, 0.3);
+  border: 1px solid rgba(31, 41, 55, 0.5);
+  overflow: hidden;
+}
+
+.stat-fill {
+  height: 100%;
+  width: 50%;
+  transition: width 0.5s ease;
+}
+
+#bar-stamina { background: #22c55e; } /* 体力绿 */
+#bar-mood { background: #a855f7; }    /* 心情紫 */
+
+/* 数字（存款/时薪） */
+.stat-num {
+  flex: 1;
+  color: #1f2937;
+  font-size: 9px;
+  text-align: right;
+}
+
 /* ===== 冒泡（红线 1：只反应不教育；红线 3：3 秒消失不打断） ===== */
 /* 冒泡定位在角色正上方（窗口的上半透明区） */
 #bubble {
   position: absolute;
-  /* 紧贴角色顶部上方：角色顶 = bottom 96px，冒泡在其上 */
-  bottom: 104px;
+  /* 在数值面板上方（面板约占 50px，从 bottom:100 往上） */
+  bottom: 155px;
   left: 50%;
   transform: translateX(-50%) translateY(8px);
   max-width: 148px;

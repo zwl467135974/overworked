@@ -11,8 +11,15 @@
     <!-- 像素打工仔本体：96×96 Canvas -->
     <canvas id="pet" width="96" height="96"></canvas>
 
+    <!-- 数值细条（红线2 调整后：常驻显示四属性） -->
+    <div id="stats-panel">
+      <div class="stat-row"><span class="stat-label">体力</span><div class="stat-bar"><div class="stat-fill" id="bar-stamina"></div></div></div>
+      <div class="stat-row"><span class="stat-label">心情</span><div class="stat-bar"><div class="stat-fill" id="bar-mood"></div></div></div>
+      <div class="stat-row"><span class="stat-label">存款</span><span class="stat-num" id="num-savings">0</span></div>
+      <div class="stat-row"><span class="stat-label">时薪</span><span class="stat-num" id="num-wage">0</span></div>
+    </div>
+
     <!-- 冒泡文字（红线 1/3：只反应不教育，3 秒消失） -->
-    <!-- 默认隐藏，由 .show 控制显示。溢出窗口顶部显示 -->
     <div id="bubble"></div>
   </body>
 </html>

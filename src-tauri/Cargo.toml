@@ -22,3 +22,5 @@ tokio = { version = "1.53.1", features = ["time"] }
 # 行为感知（红线：只记频率不记内容，见 overworked_behavior_sensing）
 rdev = "0.5"
 windows = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Foundation", "Win32_System_SystemInformation"] }
+# 本地存档（红线4：零上传，单文件 SQLite）
+rusqlite = { version = "0.32", features = ["bundled"] }

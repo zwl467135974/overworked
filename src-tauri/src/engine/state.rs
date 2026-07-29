@@ -10,8 +10,19 @@
 
 use std::time::Instant;
 
+use super::save;
 use crate::rendering_bridge::Expression;
 use crate::sensing::BehaviorSample;
+use serde::Serialize;
+
+/// 数值面板载荷（红线2 调整后：四属性对前端可见，驱动常驻细条）。
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct StatsPayload {
+    pub stamina: f32,      // 0-100
+    pub mood: f32,         // 0-100
+    pub hourly_wage: f32,  // 浮动
+    pub savings: f32,      // 累积
+}
 
 /// 像素打工仔的完整内部状态。
 ///
@@ -42,6 +53,51 @@ impl PetState {
         }
     }
 
+    /// 从存档快照恢复（重启时用）。last_tick 重置为当前。
+    pub fn from_snapshot(snap: save::StateSnapshot) -> Self {
+        Self {
+            stamina: snap.stamina,
+            hourly_wage: snap.hourly_wage,
+            mood: snap.mood,
+            savings: snap.savings,
+            last_tick: Instant::now(),
+        }
+    }
+
+    /// 导出存档快照（存档时用）。不暴露 getter，snapshot 是内部转换。
+    pub fn to_snapshot(&self) -> save::StateSnapshot {
+        save::StateSnapshot {
+            stamina: self.stamina,
+            hourly_wage: self.hourly_wage,
+            mood: self.mood,
+            savings: self.savings,
+        }
+    }
+
+    /// 导出数值面板载荷（红线2 调整后对前端可见，驱动常驻细条）。
+    pub fn to_stats_payload(&self) -> StatsPayload {
+        StatsPayload {
+            stamina: self.stamina,
+            mood: self.mood,
+            hourly_wage: self.hourly_wage,
+            savings: self.savings,
+        }
+    }
+
+    /// 离线恢复：离线期间"在睡觉"，按时长恢复体力。
+    /// 约 8 小时满血（速率 ~12.5/小时）。心情也小幅恢复（睡了个好觉）。
+    pub fn apply_offline_recovery(&mut self, offline_secs: u64) {
+        if offline_secs == 0 {
+            return;
+        }
+        let hours = offline_secs as f32 / 3600.0;
+        // 体力恢复：每小时 +12.5，上限 100
+        self.stamina = (self.stamina + hours * 12.5).min(100.0);
+        // 心情小幅恢复：每小时 +3（睡好心情好），上限 100
+        self.mood = (self.mood + hours * 3.0).min(100.0);
+        self.last_tick = Instant::now();
+    }
+
     /// 消费一个 5 秒行为样本，推进四属性。
     ///
     /// MVP 映射（见 overworked_game_loop 行为→状态表）：
@@ -50,19 +106,30 @@ impl PetState {
     /// - 不实现心情/存款的复杂逻辑，留 Phase 2
     pub fn apply_sample(&mut self, sample: &BehaviorSample) {
         let now = Instant::now();
-        let dt = now.duration_since(self.last_tick).as_secs_f32();
+        let dt = now.duration_since(self.last_tick).as_secs_f32().max(0.1);
         self.last_tick = now;
 
-        // 按键活动强度：每秒按键数（粗略归一化）
-        let keys_per_sec = sample.key_count as f32 / dt.max(1.0);
+        // 按键活动强度：每秒按键数
+        let keys_per_sec = sample.key_count as f32 / dt;
 
         if keys_per_sec > 1.0 {
-            // 在打工：体力下降，时薪随产能微涨
-            self.stamina -= keys_per_sec * 0.5 * dt.max(1.0);
-            self.hourly_wage += keys_per_sec * 0.1;
+            // 在打工：体力下降。调到约 2 小时从满到空（每秒 ~0.7 消耗）
+            // keys_per_sec≈4（正常打字）时，每秒消耗约 0.6
+            self.stamina -= (keys_per_sec * 0.15) * dt;
+            // 时薪随产能微涨
+            self.hourly_wage += keys_per_sec * 0.02 * dt;
+            // 存款累积：时薪 × 有效工时（dt 秒）
+            self.savings += self.hourly_wage * dt / 3600.0;
+            // 心情微降（打工累）
+            self.mood -= 0.3 * dt;
         } else if sample.idle_seconds >= 30 {
-            // 带薪摸鱼：体力恢复
-            self.stamina += 2.0 * dt.max(1.0);
+            // 带薪摸鱼：体力恢复（每秒 +1.5，挂机 1 分钟回 90）
+            self.stamina += 1.5 * dt;
+            // 心情回升（摸鱼快乐）
+            self.mood += 0.8 * dt;
+        } else {
+            // 一般空闲（有鼠标动但没打字）：缓慢恢复
+            self.stamina += 0.5 * dt;
         }
 
         // 钳制到合法区间

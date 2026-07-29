@@ -241,8 +241,13 @@ canvas.addEventListener("mousemove", (e) => {
 canvas.addEventListener("mouseup", (e) => {
   if (e.button !== 0) return;
   // 松开 → 结束 poke/drag，回当前状态
+  const wasDragged = mouseDown?.dragged;
   endHoldAction();
   mouseDown = null;
+  // 拖动结束后存窗口位置
+  if (wasDragged) {
+    invoke("save_window_pos").catch(() => {});
+  }
 });
 
 canvas.addEventListener("mouseleave", () => {
@@ -494,6 +499,20 @@ listen("preview-action", (event) => {
     // jump 等一次性动作
     triggerOneShot(action);
   }
+});
+
+// 数值细条更新（红线2 调整后：四属性对前端可见）
+const barStamina = document.getElementById("bar-stamina");
+const barMood = document.getElementById("bar-mood");
+const numSavings = document.getElementById("num-savings");
+const numWage = document.getElementById("num-wage");
+
+listen("stats-update", (event) => {
+  const s = event.payload;
+  if (barStamina) barStamina.style.width = `${Math.max(0, Math.min(100, s.stamina))}%`;
+  if (barMood) barMood.style.width = `${Math.max(0, Math.min(100, s.mood))}%`;
+  if (numSavings) numSavings.textContent = Math.floor(s.savings);
+  if (numWage) numWage.textContent = s.hourly_wage.toFixed(0);
 });
 
 // ===== 启动（顶层 await，target=esnext 支持） =====

@@ -21,7 +21,8 @@ mod skin;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use engine::PetState;
+use engine::save::SaveStore;
+use engine::{PetState, StatsPayload};
 use rendering_bridge::Expression;
 use sensing::{BehaviorSensor, PlatformSensor};
 use skin::scan_all_skins;
@@ -37,6 +38,7 @@ const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 struct AppState {
     sensor: Mutex<PlatformSensor>,
     state: Mutex<PetState>,
+    save: Mutex<SaveStore>,
 }
 
 /// 点击它一下 → "哎！"（MVP 必做交互）。
@@ -79,6 +81,34 @@ fn hide_for_one_hour(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Res
         }
     });
     Ok(())
+}
+
+/// 存当前窗口位置（前端拖动结束时调用）。
+#[tauri::command]
+fn save_window_pos(window: tauri::WebviewWindow, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let pos = window.outer_position().map_err(|e| e.to_string())?;
+    if let Ok(save) = state.save.lock() {
+        let _ = save.save_window_pos(pos.x, pos.y);
+    }
+    Ok(())
+}
+
+/// 退出时存档：存四属性 + 窗口位置。
+/// 独立函数避免闭包内的借用生命周期问题。
+fn save_on_exit(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let snapshot = match state.state.lock() {
+        Ok(p) => p.to_snapshot(),
+        Err(_) => return,
+    };
+    let Ok(save) = state.save.lock() else { return };
+    let _ = save.save_state(snapshot);
+    if let Some(w) = app.get_webview_window("main") {
+        if let Ok(pos) = w.outer_position() {
+            let _ = save.save_window_pos(pos.x, pos.y);
+        }
+    }
+    eprintln!("[save] 退出存档完成");
 }
 
 /// 构建右键菜单（每次右键动态构建，因为皮肤列表会变）。
@@ -143,17 +173,68 @@ fn state_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState {
-            sensor: Mutex::new(PlatformSensor::new()),
-            state: Mutex::new(PetState::new()),
-        })
         .setup(|app| {
-            // 启动后台采样循环：感知 → 状态 → 表情
+            // ===== 存档：打开/创建 + 加载 + 离线恢复 =====
+            let data_dir = app
+                .path()
+                .app_local_data_dir()
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let save_store = match SaveStore::open(data_dir) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[save] 存档打开失败，用默认状态: {e}");
+                    SaveStore::open(std::env::temp_dir()).unwrap()
+                }
+            };
+
+            // 加载存档或初始化默认状态 + 离线恢复
+            let pet_state = match save_store.load_state() {
+                Some((snap, offline_secs)) => {
+                    let mut ps = PetState::from_snapshot(snap);
+                    ps.apply_offline_recovery(offline_secs);
+                    eprintln!(
+                        "[save] 恢复存档：离线 {} 秒（约 {:.1} 小时）",
+                        offline_secs,
+                        offline_secs as f32 / 3600.0
+                    );
+                    ps
+                }
+                None => {
+                    eprintln!("[save] 无存档，初始化默认状态");
+                    PetState::new()
+                }
+            };
+
+            // 恢复窗口位置
+            if let Some(pos) = save_store.load_window_pos() {
+                if let Some(win) = app.get_webview_window("main") {
+                    use tauri::PhysicalPosition;
+                    let _ = win.set_position(PhysicalPosition::new(pos.x, pos.y));
+                }
+            }
+
+            // 注册 AppState（含存档）
+            app.manage(AppState {
+                sensor: Mutex::new(PlatformSensor::new()),
+                state: Mutex::new(pet_state),
+                save: Mutex::new(save_store),
+            });
+
+            // 触发连续天数更新
+            if let Some(s) = app.try_state::<AppState>() {
+                if let Ok(save) = s.save.lock() {
+                    let _ = save.touch_streak();
+                }
+            }
+
+            // 启动后台采样循环：感知 → 状态 → 表情 + 定期存档
             let app_handle = app.handle().clone();
             async_runtime::spawn(async move {
                 let state = app_handle.state::<AppState>();
+                let mut tick_count = 0u32;
                 loop {
                     sleep(SAMPLE_INTERVAL).await;
+                    tick_count += 1;
 
                     // 1. 感知：取走并清零计数器（5 秒聚合样本）
                     let sample = {
@@ -168,7 +249,7 @@ pub fn run() {
                     };
 
                     // 2. 状态：消费样本，推进四属性
-                    let expression = {
+                    let (expression, snapshot, stats, work_secs, idle_secs) = {
                         let mut pet = match state.state.lock() {
                             Ok(g) => g,
                             Err(e) => {
@@ -177,14 +258,44 @@ pub fn run() {
                             }
                         };
                         pet.apply_sample(&sample);
-                        // 3. 翻译：数值 → 表情（红线 2 的出口）
-                        pet.expression()
+                        let worked = sample.key_count > 5;
+                        let idled = sample.idle_seconds >= 30;
+                        (
+                            pet.expression(),
+                            pet.to_snapshot(),
+                            pet.to_stats_payload(),
+                            if worked { SAMPLE_INTERVAL.as_secs() as i64 } else { 0 },
+                            if idled { SAMPLE_INTERVAL.as_secs() as i64 } else { 0 },
+                        )
                     };
 
-                    // 4. 推送：表现层渲染指令到前端（不是游戏数值！）
+                    // 3. 推送：表现层渲染指令 + 数值面板（红线2 调整后）
                     let _ = app_handle.emit("expression-changed", expression.to_payload());
+                    let _ = app_handle.emit("stats-update", stats);
+
+                    // 4. 每 6 次（30 秒）存档 + 累加统计
+                    if tick_count % 6 == 0 {
+                        if let Ok(save) = state.save.lock() {
+                            let _ = save.add_stats(
+                                sample.key_count as i64 * 6, // 估算 30 秒总按键
+                                work_secs * 6,
+                                idle_secs * 6,
+                            );
+                            let _ = save.save_state(snapshot);
+                        }
+                    }
                 }
             });
+
+            // 退出时存档（窗口关闭事件）
+            let app_handle = app.handle().clone();
+            if let Some(win) = app.get_webview_window("main") {
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { .. } = event {
+                        save_on_exit(&app_handle);
+                    }
+                });
+            }
 
             // 右键菜单事件路由
             let app_handle = app.handle().clone();
@@ -221,6 +332,7 @@ pub fn run() {
             set_cursor_passthrough,
             show_context_menu,
             hide_for_one_hour,
+            save_window_pos,
             skin::list_skins,
             skin::read_skin_frame,
             skin::switch_skin
