@@ -3,8 +3,7 @@
 // 皮肤目录结构（核心契约）：
 //   skins/<皮肤名>/<动作>/1.png 2.png ...
 //
-// 文件夹名 = 动作名（固定 11 个：idle/working/tired/exhausted/overworked/
-//   nightshift/happy/poke/drag/walk/jump）
+// 文件夹名 = 动作名（18 个，见 ACTIONS 常量）
 // 文件名 = 帧序号（1.png 2.png...，帧数任意）
 // 缺失的动作 → 前端 fallback 到 idle
 //
@@ -18,8 +17,10 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// 固定的动作清单（顺序即优先级，idle 必须存在作为 fallback）。
+/// 固定的动作清单（18 个，终极形态）。
+/// idle 必须存在作为 fallback。顺序无功能意义，仅文档可读性。
 pub const ACTIONS: &[&str] = &[
+    // 状态动作（7）
     "idle",
     "working",
     "tired",
@@ -27,10 +28,20 @@ pub const ACTIONS: &[&str] = &[
     "overworked",
     "nightshift",
     "happy",
+    // 交互动作（2）
     "poke",
     "drag",
+    // 生动动作（2）
     "walk",
     "jump",
+    // 特殊事件动作（7）—— Phase 3，触发逻辑待实现，动作契约先备好
+    "leave",        // 离职搬箱走
+    "return",       // 新员工到岗
+    "promoted",     // 升职戴铭牌
+    "teambuilding", // 团建举杯
+    "lunchnap",     // 午休趴睡
+    "payday",       // 发工资数钱
+    "vacation",     // 度假
 ];
 
 /// 单个动作的帧信息。

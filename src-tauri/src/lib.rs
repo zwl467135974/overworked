@@ -131,8 +131,8 @@ fn state_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
 
     // "动作预览"子菜单：手动触发任意动作看效果（开发/调试用）
     // 状态动作（切换后会持续，直到下次状态变化）
-    let state_actions = ["idle", "working", "tired", "exhausted", "overworked", "nightshift", "happy"];
-    let oneshot_actions = ["poke", "drag", "walk", "jump"];
+    let state_actions = ["idle", "working", "tired", "exhausted", "overworked", "nightshift", "happy", "promoted", "lunchnap", "vacation"];
+    let oneshot_actions = ["poke", "drag", "walk", "jump", "leave", "return", "teambuilding", "payday"];
 
     let mut preview_submenu = SubmenuBuilder::new(app, "动作预览");
     // 状态动作区（用 disabled MenuItem 当分组标签）

@@ -446,15 +446,15 @@ function render(now) {
       ctx.scale(-1, 1);
     }
     if (!oneShotAction) {
-      ctx.rotate(currentPayload.rotation); // 一次性动作不旋转
+      ctx.rotate(currentPayload.rotation);
     }
-    // 32×32 放大到 64×64 居中
-    ctx.drawImage(imgToDraw, -32, -32, 64, 64);
+    // 64×64 帧放大到 96×96 居中显示（1.5x，保持像素感）
+    ctx.drawImage(imgToDraw, -48, -48, 96, 96);
     ctx.restore();
   } else {
     // 帧未加载完，画占位
     ctx.fillStyle = "#6b7280";
-    ctx.fillRect(16, 16, 64, 64);
+    ctx.fillRect(0, 0, 96, 96);
   }
 
   ctx.filter = "none";
@@ -613,7 +613,7 @@ listen("skin-switched", async (event) => {
 });
 
 // 动作预览（右键菜单"动作预览"手动触发）
-const STATE_ACTIONS = ["idle", "working", "tired", "exhausted", "overworked", "nightshift", "happy"];
+const STATE_ACTIONS = ["idle", "working", "tired", "exhausted", "overworked", "nightshift", "happy", "promoted", "lunchnap", "vacation"];
 let previewUntil = 0; // 预览模式结束时间，期间真实感知不覆盖状态
 listen("preview-action", (event) => {
   const action = event.payload;
