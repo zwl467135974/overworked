@@ -244,10 +244,12 @@ impl PetState {
 
         if is_working {
             self.stamina -= (keys_per_sec * 0.15) * dt;
-            self.hourly_wage += keys_per_sec * 0.02 * dt;
-            // 存款增长：游戏化加速（×60），让打字能肉眼可见地攒钱。
-            // 原真实换算 hourly_wage*dt/3600 太慢（时薪35打工1分钟才涨0.6），
-            // 加速后打工1分钟约涨35，几分钟就能攒够500灵石入门修仙。
+            // 时薪：朝当前打字强度趋近（非单调累加）。
+            // 打字快→时薪上升趋近峰值，摸鱼→下个分支回落。
+            // 用 lerp 让时薪平滑跟随，避免无限上涨到离谱的数值。
+            let target_wage = 30.0 + keys_per_sec * 20.0; // 1键/秒≈50, 3键/秒≈90, 5键/秒≈130
+            self.hourly_wage += (target_wage - self.hourly_wage) * 0.02 * dt;
+            // 存款：按当前时薪算（×60 加速，游戏化节奏）
             self.savings += self.hourly_wage * dt / 60.0;
             self.mood -= 0.2 * dt;
             self.focus_seconds += dt;
@@ -261,10 +263,14 @@ impl PetState {
             self.stamina += 1.5 * dt;
             self.mood += 1.2 * dt;
             self.focus_seconds = 0.0;
+            // 摸鱼→时薪回落（朝基线 35 趋近）
+            self.hourly_wage += (35.0 - self.hourly_wage) * 0.05 * dt;
             self.idle_seconds_accum += dt; // 累计挂机时长
         } else {
             self.stamina += 0.5 * dt;
             self.mood += 0.4 * dt;
+            // 不忙不闲→时薪缓慢回落
+            self.hourly_wage += (35.0 - self.hourly_wage) * 0.03 * dt;
             self.idle_seconds_accum += dt;
         }
 
