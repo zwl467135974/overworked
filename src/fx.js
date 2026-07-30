@@ -210,6 +210,22 @@ listen("life-saved", () => {
   flashAlpha = 0.1;
 });
 
+// 存款首达500彩蛋 → 神秘金光觉醒（克制、暗示性，不爆炸）
+listen("savings-milestone", () => {
+  const cx = petX;
+  const cy = petY - 30;
+  // 缓慢扩散的金环（暗示有什么被触发了）
+  spawnRing(cx, cy, "#ffd700", 1.5, 1200, 3);
+  setTimeout(() => spawnRing(cx, cy, "#ffe9a8", 2, 1000, 2.5), 300);
+  // 少量上升的金色灵气（神秘感）
+  for (let i = 0; i < 8; i++) {
+    const ox = (Math.random() - 0.5) * 30;
+    spawnDot(cx + ox, cy, (Math.random() - 0.5) * 0.3, -1.5 - Math.random(), "#fff3c4", 2.5, 1500, -0.01);
+  }
+  // 轻微金闪
+  flashAlpha = 0.08;
+});
+
 // ===== 预渲染发光球（避免每帧 createRadialGradient 的性能开销）=====
 const glowCache = {};
 function getGlow(color, size) {

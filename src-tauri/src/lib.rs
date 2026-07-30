@@ -66,8 +66,8 @@ fn set_cursor_passthrough(window: tauri::WebviewWindow, ignore: bool) -> Result<
 
 /// 显示右键菜单。debug=true 显示调试项（Shift+右键）。
 #[tauri::command]
-fn show_context_menu(window: tauri::WebviewWindow, debug: bool) {
-    if let Ok(menu) = state_menu(&window.app_handle(), debug) {
+fn show_context_menu(app: tauri::AppHandle, window: tauri::WebviewWindow, debug: bool) {
+    if let Ok(menu) = state_menu(&app, debug) {
         let _ = menu.popup(window.as_ref().window());
     }
 }
@@ -350,9 +350,24 @@ fn save_on_exit(app: &tauri::AppHandle) {
 
 /// 构建右键菜单。debug=true 时显示调试项（动作预览/事件触发）。
 fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    // 读存款决定商店菜单标签（<500 显示「??？」保留神秘感）
+    let savings = app
+        .try_state::<AppState>()
+        .and_then(|s| s.state.lock().ok().map(|p| p.to_snapshot().savings))
+        .unwrap_or(0.0);
+    let already_cult = app
+        .try_state::<AppState>()
+        .and_then(|s| s.save.lock().ok().map(|sv| sv.load_events().cultivation_mode))
+        .unwrap_or(false);
+    let shop_label = if already_cult || savings >= 500.0 {
+        "商店 / 修仙"
+    } else {
+        "？？？"
+    };
+
     let hide_1h = MenuItem::with_id(app, "hide_1h", "暂时消失 1 小时", true, None::<&str>)?;
     let coffee = MenuItem::with_id(app, "coffee", "投喂咖啡", true, None::<&str>)?;
-    let shop = MenuItem::with_id(app, "shop", "商店 / 修仙", true, None::<&str>)?;
+    let shop = MenuItem::with_id(app, "shop", shop_label, true, None::<&str>)?;
     let reset_pos = MenuItem::with_id(app, "reset_pos", "回位", true, None::<&str>)?;
     let fall = MenuItem::with_id(app, "fall", "掉下去", true, None::<&str>)?;
     let report = MenuItem::with_id(app, "report", "打工日报", true, None::<&str>)?;
@@ -713,6 +728,17 @@ pub fn run() {
                                 let _ = app_handle.emit("life-saved", ());
                                 let _ = app_handle.emit("bubble-show", "续命丹救命！");
                             }
+                            TickEvent::SavingsMilestone => {
+                                // 存款首达500：彩蛋提示（金光特效 + 神秘冒泡）
+                                let _ = app_handle.emit("savings-milestone", ());
+                                let _ = app_handle.emit("bubble-show", "灵石满500…似乎触碰到了什么…右键看看？");
+                                // 重建托盘菜单：「？？？」→「商店 / 修仙」
+                                if let Some(tray) = app_handle.tray_by_id("main-tray") {
+                                    if let Ok(menu) = state_menu(&app_handle, false) {
+                                        let _ = tray.set_menu(Some(menu));
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -798,10 +824,23 @@ pub fn run() {
                         let _ = app_handle.emit("menu/fall", ());
                     }
                     "shop" => {
-                        // 打开商店窗口
-                        if let Some(shop_win) = app_handle.get_webview_window("shop") {
-                            let _ = shop_win.show();
-                            let _ = shop_win.set_focus();
+                        // 商店/彩蛋：存够500或已修仙才打开，否则弹神秘提示
+                        let state = app_handle.state::<AppState>();
+                        let (savings, already_cult) = {
+                            let pet = state.state.lock().unwrap();
+                            let ev = state.save.lock().map(|s| s.load_events()).unwrap_or_default();
+                            (pet.to_snapshot().savings, ev.cultivation_mode)
+                        };
+                        if already_cult || savings >= 500.0 {
+                            if let Some(shop_win) = app_handle.get_webview_window("shop") {
+                                let _ = shop_win.show();
+                                let _ = shop_win.set_focus();
+                            }
+                        } else {
+                            // 彩蛋提示：保留神秘感
+                            let need = 500 - savings as i64;
+                            let msg = format!("？？？\n似乎…还差 {} 灵石才能触碰那个秘密", need.max(0));
+                            let _ = app_handle.emit("bubble-show", msg);
                         }
                     }
                     "reset_pos" => {

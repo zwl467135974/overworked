@@ -115,6 +115,8 @@ pub enum TickEvent {
     CoffeeBoost,   // 投喂咖啡（command 触发，体力恢复）
     // 修仙：续命丹救命（消耗一颗续命丹，免于过劳送医）
     LifeSaved,
+    // 彩蛋：存款首达500（修仙之路开启的神秘提示）
+    SavingsMilestone,
 }
 
 impl PetState {
@@ -309,6 +311,12 @@ impl PetState {
                 ev.cultivation_exp = (ev.cultivation_exp + g).min(100.0);
             }
             events.push(TickEvent::PomodoroComplete);
+        }
+
+        // ===== 存款首达500彩蛋（修仙之路的神秘提示，只触发一次）=====
+        if !ev.savings_milestone_shown && self.savings >= 500.0 && !ev.cultivation_mode {
+            ev.savings_milestone_shown = true;
+            events.push(TickEvent::SavingsMilestone);
         }
 
         // ===== 过劳送医检查（修仙：续命丹可救命）=====
