@@ -282,6 +282,8 @@ async function doFall(screenH, scaleFactor) {
 /** 落地后沿底边左右走一段 */
 function strollOnGround(startX, groundY, screenW, scaleFactor) {
   const winW_phys = WIN_W * scaleFactor;
+  // 初始位置边界校验：超出则钳到屏幕内
+  let x = Math.max(0, Math.min(startX, screenW - winW_phys));
   // 智能选方向：靠右走左，靠左走右，中间随机
   let dir;
   if (startX > screenW - winW_phys - 100) {
@@ -292,7 +294,6 @@ function strollOnGround(startX, groundY, screenW, scaleFactor) {
     dir = Math.random() < 0.5 ? 1 : -1;
   }
   const distance = Math.round((80 + Math.random() * 120) * scaleFactor);
-  let x = startX;
   let traveled = 0;
 
   walkDir = dir;
@@ -389,9 +390,30 @@ canvas.addEventListener("contextmenu", (e) => {
 
 // ===== 渲染主循环 =====
 // ===== 拖动结束检测（由 Rust 侧 Moved debounce emit）=====
-// 左键拖=移位，只存位置不掉落（掉落走右键菜单）
-listen("drag-ended", () => {
+// 左键拖=移位（存位置），位置在屏幕外则拉回
+listen("drag-ended", async () => {
   invoke("save_window_pos").catch(() => {});
+  // 边界校验：拖到屏幕外则拉回
+  const monitor = await window.__TAURI__.window.currentMonitor().catch(() => null);
+  if (!monitor) return;
+  const sw = monitor.size.width;
+  const sh = monitor.size.height;
+  const sf = monitor.scaleFactor;
+  let pos;
+  try { pos = await win.outerPosition(); } catch { return; }
+  const winW = WIN_W * sf;
+  const winH = WIN_H * sf;
+  let needFix = false;
+  let nx = pos.x, ny = pos.y;
+  if (pos.x < -winW * 0.5) { nx = 0; needFix = true; }
+  if (pos.x > sw - winW * 0.3) { nx = sw - winW - 20; needFix = true; }
+  if (pos.y < -winH * 0.5) { ny = 0; needFix = true; }
+  if (pos.y > sh - 30) { ny = sh - winH - 20; needFix = true; }
+  if (needFix) {
+    const { PhysicalPosition } = window.__TAURI__.window;
+    await win.setPosition(new PhysicalPosition(Math.round(nx), Math.round(ny)));
+    invoke("save_window_pos").catch(() => {});
+  }
 });
 
 function render(now) {

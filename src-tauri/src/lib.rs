@@ -85,6 +85,20 @@ fn hide_for_one_hour(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Res
     Ok(())
 }
 
+/// 回位：窗口回到屏幕右下角。
+#[tauri::command]
+fn reset_position(window: tauri::WebviewWindow) -> Result<(), String> {
+    use tauri::PhysicalPosition;
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let sw = monitor.size().width as i32;
+        let sh = monitor.size().height as i32;
+        let x = sw - 180;
+        let y = sh - 240;
+        window.set_position(PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// 投喂咖啡：体力 +30 + 心情 +10，冒泡"续命了"。
 #[tauri::command]
 fn feed_coffee(app: tauri::AppHandle, state: tauri::State<'_, AppState>) {
@@ -167,7 +181,8 @@ fn save_on_exit(app: &tauri::AppHandle) {
 /// 构建右键菜单。debug=true 时显示调试项（动作预览/事件触发）。
 fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let hide_1h = MenuItem::with_id(app, "hide_1h", "暂时消失 1 小时", true, None::<&str>)?;
-    let coffee = MenuItem::with_id(app, "coffee", "☕ 投喂咖啡", true, None::<&str>)?;
+    let coffee = MenuItem::with_id(app, "coffee", "投喂咖啡", true, None::<&str>)?;
+    let reset_pos = MenuItem::with_id(app, "reset_pos", "回位", true, None::<&str>)?;
     let fall = MenuItem::with_id(app, "fall", "掉下去", true, None::<&str>)?;
     let report = MenuItem::with_id(app, "report", "打工日报", true, None::<&str>)?;
     let fx_toggle = MenuItem::with_id(app, "fx_toggle", "特效开关", true, None::<&str>)?;
@@ -189,6 +204,7 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
     let mut builder = MenuBuilder::new(app)
         .item(&hide_1h)
         .item(&coffee)
+        .item(&reset_pos)
         .item(&fall)
         .item(&report)
         .item(&fx_toggle)
@@ -570,6 +586,17 @@ pub fn run() {
                     "fall" => {
                         let _ = app_handle.emit("menu/fall", ());
                     }
+                    "reset_pos" => {
+                        if let Some(win) = app_handle.get_webview_window("main") {
+                            use tauri::PhysicalPosition;
+                            if let Ok(Some(monitor)) = win.current_monitor() {
+                                let sw = monitor.size().width as i32;
+                                let sh = monitor.size().height as i32;
+                                let _ = win.set_position(PhysicalPosition::new(sw - 180, sh - 240));
+                            }
+                        }
+                        let _ = app_handle.emit("bubble-show", "我回来了！");
+                    }
                     "fx_toggle" => {
                         let state = app_handle.state::<AppState>();
                         let enabled = if let Ok(mut save) = state.save.lock() {
@@ -665,6 +692,7 @@ pub fn run() {
             get_work_report,
             toggle_fx,
             feed_coffee,
+            reset_position,
             skin::list_skins,
             skin::read_skin_frame,
             skin::switch_skin
