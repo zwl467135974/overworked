@@ -59,6 +59,12 @@
     ],
     "resources": {
       "../skins/": "skins/"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
     }
   }
 }
