@@ -30,7 +30,8 @@
         "label": "fx-overlay",
         "title": "Overworked FX",
         "url": "fx.html",
-        "fullscreen": true,
+        "width": 1920,
+        "height": 1080,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
@@ -38,7 +39,8 @@
         "shadow": false,
         "focus": false,
         "skipTaskbar": true,
-        "visible": true
+        "visible": true,
+        "center": true
       }
     ],
     "security": {
@@ -55,8 +57,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../skins/**/*"
-    ]
+    "resources": {
+      "../skins/": "skins/"
+    }
   }
 }

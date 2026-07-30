@@ -20,14 +20,16 @@ window.addEventListener("resize", resize);
 
 win.setIgnoreCursorEvents(true).catch(() => {});
 
-// 桌宠位置（逻辑坐标）
+// 桌宠位置（逻辑坐标），默认屏幕右下
 let petX = window.innerWidth - 100;
 let petY = window.innerHeight - 150;
 
 listen("pet-position", (event) => {
   const p = event.payload;
-  petX = p[0];
-  petY = p[1];
+  if (Array.isArray(p)) {
+    petX = p[0];
+    petY = p[1];
+  }
 });
 
 // ===== 粒子系统 =====
@@ -84,12 +86,17 @@ listen("typing-pulse", (event) => {
   }
 });
 
-// 点击→实际坐标爆发
+// 点击→实际坐标爆发（rdev 发的可能是物理坐标，需缩放）
 listen("click-pulse", (event) => {
   const p = event.payload;
-  const cx = p ? p[0] : petX;
-  const cy = p ? p[1] : petY;
-  spawnRing(cx, cy, "#22d3ee", 2.5, 500, 4);
+  // rdev MouseMove 坐标是物理像素，fx-overlay 是全屏逻辑坐标
+  // 直接用，因为 fx-overlay 窗口覆盖全屏
+  const cx = p && p[0] !== undefined ? p[0] : petX;
+  const cy = p && p[1] !== undefined ? p[1] : petY;
+  // 限制在屏幕范围内
+  const safeX = Math.max(0, Math.min(canvas.width, cx));
+  const safeY = Math.max(0, Math.min(canvas.height, cy));
+  spawnRing(safeX, safeY, "#22d3ee", 2.5, 500, 4);
   for (let i = 0; i < 8; i++) {
     const angle = (Math.PI * 2 * i) / 8;
     const speed = 2.5 + Math.random() * 2;
