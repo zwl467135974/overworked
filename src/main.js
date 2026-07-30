@@ -356,10 +356,10 @@ canvas.addEventListener("mouseleave", () => {
   mouseDown = null;
 });
 
-// ===== 右键菜单 =====
+// ===== 右键菜单（Shift+右键 = 调试菜单）=====
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
-  invoke("show_context_menu").catch((err) => console.error("menu", err));
+  invoke("show_context_menu", { debug: e.shiftKey }).catch((err) => console.error("menu", err));
 });
 
 // ===== 渲染主循环 =====

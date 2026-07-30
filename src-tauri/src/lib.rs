@@ -60,10 +60,10 @@ fn set_cursor_passthrough(window: tauri::WebviewWindow, ignore: bool) -> Result<
         .map_err(|e| e.to_string())
 }
 
-/// 显示右键菜单（PRD 三项 + 换皮肤动态子菜单）。
+/// 显示右键菜单。debug=true 显示调试项（Shift+右键）。
 #[tauri::command]
-fn show_context_menu(window: tauri::WebviewWindow) {
-    if let Ok(menu) = state_menu(&window.app_handle()) {
+fn show_context_menu(window: tauri::WebviewWindow, debug: bool) {
+    if let Ok(menu) = state_menu(&window.app_handle(), debug) {
         let _ = menu.popup(window.as_ref().window());
     }
 }
@@ -81,6 +81,24 @@ fn hide_for_one_hour(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Res
         }
     });
     Ok(())
+}
+
+/// 打工日报：返回格式化统计文本（用冒泡展示，不做复杂UI）。
+#[tauri::command]
+fn get_work_report(state: tauri::State<'_, AppState>) -> String {
+    let save = match state.save.lock() {
+        Ok(s) => s,
+        Err(_) => return "打工日报读取失败".to_string(),
+    };
+    let stats = save.load_stats();
+    let work_h = stats.total_work_seconds / 3600;
+    let work_m = (stats.total_work_seconds % 3600) / 60;
+    let idle_h = stats.total_idle_seconds / 3600;
+    let idle_m = (stats.total_idle_seconds % 3600) / 60;
+    format!(
+        "打工日报：已连续 {} 天\n打工 {}小时{}分 | 摸鱼 {}小时{}分\n累计按键 {} 次",
+        stats.streak_days, work_h, work_m, idle_h, idle_m, stats.total_keys
+    )
 }
 
 /// 存当前窗口位置（前端拖动结束时调用）。
@@ -111,15 +129,16 @@ fn save_on_exit(app: &tauri::AppHandle) {
     eprintln!("[save] 退出存档完成");
 }
 
-/// 构建右键菜单（每次右键动态构建，因为皮肤列表会变）。
-fn state_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+/// 构建右键菜单。debug=true 时显示调试项（动作预览/事件触发）。
+fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let hide_1h = MenuItem::with_id(app, "hide_1h", "暂时消失 1 小时", true, None::<&str>)?;
     let fall = MenuItem::with_id(app, "fall", "掉下去", true, None::<&str>)?;
+    let report = MenuItem::with_id(app, "report", "打工日报", true, None::<&str>)?;
     let about = MenuItem::with_id(app, "about", "关于", true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, None)?;
     let sep = PredefinedMenuItem::separator(app)?;
 
-    // 动态构建"换皮肤"子菜单：扫描 skins/ 目录
+    // 换皮肤子菜单
     let skins = scan_all_skins(app);
     let mut skin_submenu = SubmenuBuilder::new(app, "换皮肤");
     for skin in &skins {
@@ -129,48 +148,45 @@ fn state_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
     }
     let skins_item = skin_submenu.build()?;
 
-    // "动作预览"子菜单：手动触发任意动作看效果（开发/调试用）
-    // 状态动作（切换后会持续，直到下次状态变化）
-    let state_actions = ["idle", "working", "tired", "exhausted", "overworked", "nightshift", "happy", "promoted", "lunchnap", "vacation"];
-    let oneshot_actions = ["poke", "drag", "walk", "jump", "leave", "return", "teambuilding", "payday"];
-
-    let mut preview_submenu = SubmenuBuilder::new(app, "动作预览");
-    // 状态动作区（用 disabled MenuItem 当分组标签）
-    let label_state = MenuItem::with_id(app, "label_state", "— 状态动作 —", false, None::<&str>)?;
-    preview_submenu = preview_submenu.item(&label_state);
-    for a in state_actions {
-        let item = MenuItem::with_id(app, format!("preview:{a}"), a, true, None::<&str>)?;
-        preview_submenu = preview_submenu.item(&item);
-    }
-    // 一次性动作区
-    let sep2 = PredefinedMenuItem::separator(app)?;
-    let label_oneshot = MenuItem::with_id(app, "label_oneshot", "— 交互/生动 —", false, None::<&str>)?;
-    preview_submenu = preview_submenu.item(&sep2).item(&label_oneshot);
-    for a in oneshot_actions {
-        let item = MenuItem::with_id(app, format!("preview:{a}"), a, true, None::<&str>)?;
-        preview_submenu = preview_submenu.item(&item);
-    }
-    // 事件触发区（调试用：直接触发番茄钟/进医院，不用等25分钟）
-    let sep3 = PredefinedMenuItem::separator(app)?;
-    let label_event = MenuItem::with_id(app, "label_event", "— 事件触发 —", false, None::<&str>)?;
-    let evt_pomodoro = MenuItem::with_id(app, "event:pomodoro", "番茄钟完成", true, None::<&str>)?;
-    let evt_hospital = MenuItem::with_id(app, "event:hospital", "进医院", true, None::<&str>)?;
-    let evt_discharge = MenuItem::with_id(app, "event:discharge", "出院", true, None::<&str>)?;
-    preview_submenu = preview_submenu
-        .item(&sep3)
-        .item(&label_event)
-        .item(&evt_pomodoro)
-        .item(&evt_hospital)
-        .item(&evt_discharge);
-    let preview_item = preview_submenu.build()?;
-
+    // 用户菜单基础项
     let mut builder = MenuBuilder::new(app)
         .item(&hide_1h)
         .item(&fall)
-        .item(&sep)
-        .item(&preview_item)
+        .item(&report)
         .item(&sep)
         .item(&skins_item);
+
+    // 调试菜单（仅 debug 模式，Shift+右键 触发）
+    if debug {
+        let state_actions = ["idle", "working", "tired", "exhausted", "overworked", "nightshift", "happy", "promoted", "lunchnap", "vacation"];
+        let oneshot_actions = ["poke", "drag", "walk", "jump", "leave", "return", "teambuilding", "payday"];
+
+        let mut preview_submenu = SubmenuBuilder::new(app, "动作预览");
+        let label_state = MenuItem::with_id(app, "label_state", "— 状态动作 —", false, None::<&str>)?;
+        preview_submenu = preview_submenu.item(&label_state);
+        for a in state_actions {
+            let item = MenuItem::with_id(app, format!("preview:{a}"), a, true, None::<&str>)?;
+            preview_submenu = preview_submenu.item(&item);
+        }
+        let sep2 = PredefinedMenuItem::separator(app)?;
+        let label_oneshot = MenuItem::with_id(app, "label_oneshot", "— 交互/生动 —", false, None::<&str>)?;
+        preview_submenu = preview_submenu.item(&sep2).item(&label_oneshot);
+        for a in oneshot_actions {
+            let item = MenuItem::with_id(app, format!("preview:{a}"), a, true, None::<&str>)?;
+            preview_submenu = preview_submenu.item(&item);
+        }
+        let sep3 = PredefinedMenuItem::separator(app)?;
+        let label_event = MenuItem::with_id(app, "label_event", "— 事件触发 —", false, None::<&str>)?;
+        let evt_pomodoro = MenuItem::with_id(app, "event:pomodoro", "番茄钟完成", true, None::<&str>)?;
+        let evt_hospital = MenuItem::with_id(app, "event:hospital", "进医院", true, None::<&str>)?;
+        let evt_discharge = MenuItem::with_id(app, "event:discharge", "出院", true, None::<&str>)?;
+        preview_submenu = preview_submenu
+            .item(&sep3).item(&label_event)
+            .item(&evt_pomodoro).item(&evt_hospital).item(&evt_discharge);
+        let preview_item = preview_submenu.build()?;
+
+        builder = builder.item(&sep).item(&preview_item);
+    }
 
     if !skins.is_empty() {
         builder = builder.item(&sep);
@@ -260,10 +276,21 @@ pub fn run() {
                 save: Mutex::new(save_store),
             });
 
-            // 触发连续天数更新
+            // 触发连续天数更新 + 成就检查
             if let Some(s) = app.try_state::<AppState>() {
                 if let Ok(save) = s.save.lock() {
                     let _ = save.touch_streak();
+                    // 成就：streak 达成里程碑时冒泡（7/30/100天）
+                    let stats = save.load_stats();
+                    let milestone = match stats.streak_days {
+                        7 => Some("成就：连续打工 7 天！你比它还能卷"),
+                        30 => Some("成就：连续打工 30 天！它已经认你做老板了"),
+                        100 => Some("成就：连续打工 100 天！它是你的了"),
+                        _ => None,
+                    };
+                    if let Some(msg) = milestone {
+                        let _ = app.emit("bubble-show", msg);
+                    }
                 }
             }
 
@@ -436,6 +463,22 @@ pub fn run() {
                     "fall" => {
                         let _ = app_handle.emit("menu/fall", ());
                     }
+                    "report" => {
+                        // 打工日报：读统计后冒泡展示
+                        let state = app_handle.state::<AppState>();
+                        let text = state.save.lock().map(|s| {
+                            let stats = s.load_stats();
+                            let work_h = stats.total_work_seconds / 3600;
+                            let work_m = (stats.total_work_seconds % 3600) / 60;
+                            let idle_h = stats.total_idle_seconds / 3600;
+                            let idle_m = (stats.total_idle_seconds % 3600) / 60;
+                            format!(
+                                "打工日报：连续{}天 | 打工{}h{}m 摸鱼{}h{}m | 按键{}次",
+                                stats.streak_days, work_h, work_m, idle_h, idle_m, stats.total_keys
+                            )
+                        }).unwrap_or_else(|_| "打工日报读取失败".to_string());
+                        let _ = app_handle.emit("bubble-show", text);
+                    }
                     "about" => {
                         let _ = app_handle.emit(
                             "bubble-show",
@@ -496,6 +539,7 @@ pub fn run() {
             show_context_menu,
             hide_for_one_hour,
             save_window_pos,
+            get_work_report,
             skin::list_skins,
             skin::read_skin_frame,
             skin::switch_skin
