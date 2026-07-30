@@ -226,6 +226,170 @@ listen("savings-milestone", () => {
   flashAlpha = 0.08;
 });
 
+// ===== 法术特效（商店施展，全屏震撼）=====
+listen("spell-cast", (event) => {
+  const spell = event.payload;
+  const cx = petX;
+  const cy = petY - 30;
+  switch (spell) {
+    case "fireball": return spellFireball(cx, cy);
+    case "ice": return spellIce(cx, cy);
+    case "thunder": return spellThunder(cx, cy);
+    case "swords": return spellSwords(cx, cy);
+    case "armageddon": return spellArmageddon(cx, cy);
+  }
+});
+
+// 火球术：红橙火球爆裂 + 火焰粒子向外扩散（1.5s）
+function spellFireball(cx, cy) {
+  // 初始大爆裂
+  spawnRing(cx, cy, "#ff6600", 4, 500, 8);
+  setTimeout(() => spawnRing(cx, cy, "#ffaa00", 5, 450, 6), 100);
+  // 30 颗火焰粒子向外炸开
+  for (let i = 0; i < 30; i++) {
+    const angle = (Math.PI * 2 * i) / 30 + Math.random() * 0.3;
+    const speed = 3 + Math.random() * 5;
+    const color = Math.random() < 0.5 ? "#ff4400" : "#ffaa00";
+    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 1, color, 4, 800, 0.05);
+  }
+  // 持续余火（0.5s/1s 再补两波）
+  setTimeout(() => {
+    for (let i = 0; i < 15; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 3;
+      spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 2, "#ff6600", 3, 600, 0.04);
+    }
+  }, 500);
+  shakeAmp = 8;
+  flashAlpha = 0.2;
+}
+
+// 冰封术：蓝白冰晶绽放 + 多层霜冻扩散环（2s）
+function spellIce(cx, cy) {
+  // 5 层冰霜环（蓝白渐变，慢扩散）
+  for (let i = 0; i < 5; i++) {
+    setTimeout(() => {
+      const color = i % 2 === 0 ? "#a0e0ff" : "#ffffff";
+      spawnRing(cx, cy, color, 2 + i * 0.5, 800, 5 - i * 0.5);
+    }, i * 200);
+  }
+  // 20 颗冰晶粒子（六角散射，缓慢飘散）
+  for (let i = 0; i < 20; i++) {
+    const angle = (Math.PI * 2 * i) / 20;
+    const speed = 2 + Math.random() * 2;
+    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, "#c0eaff", 3, 1200, -0.01);
+  }
+  // 冰雾（低速下沉的白雾）
+  for (let i = 0; i < 10; i++) {
+    const ox = (Math.random() - 0.5) * 60;
+    spawnDot(cx + ox, cy, (Math.random() - 0.5) * 0.5, 1 + Math.random(), "rgba(200,230,255,0.6)", 4, 1500, 0.01);
+  }
+  flashAlpha = 0.15;
+}
+
+// 雷劫术：紫白闪电从顶部劈下 + 电弧分支 + 强震（2.5s）
+function spellThunder(cx, cy) {
+  // 3 道闪电从屏幕顶部劈到桌宠位置（错峰）
+  for (let flash = 0; flash < 3; flash++) {
+    setTimeout(() => {
+      // 主闪电（锯齿线，用粒子模拟）
+      const topY = 0;
+      const steps = 12;
+      let prevX = cx + (Math.random() - 0.5) * 100;
+      let prevY = topY;
+      for (let s = 1; s <= steps; s++) {
+        const nx = cx + (Math.random() - 0.5) * 40;
+        const ny = topY + (cy - topY) * (s / steps);
+        // 沿路径生成发光粒子
+        for (let p = 0; p < 3; p++) {
+          const t = p / 3;
+          const px = prevX + (nx - prevX) * t;
+          const py = prevY + (ny - prevY) * t;
+          spawnDot(px, py, 0, 0, flash === 1 ? "#ffffff" : "#c080ff", 4, 300, 0);
+        }
+        prevX = nx; prevY = ny;
+      }
+      // 落地爆裂
+      spawnRing(cx, cy, "#c080ff", 4, 400, 6);
+      for (let i = 0; i < 12; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 3 + Math.random() * 4;
+        spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, "#e0c0ff", 3, 500, 0.08);
+      }
+      shakeAmp = 12;
+      flashAlpha = 0.2;
+    }, flash * 600);
+  }
+}
+
+// 万剑诀：数十把光剑从天降下 + 金光绽放（3s）
+function spellSwords(cx, cy) {
+  // 3 波剑雨（每波 12 把）
+  for (let wave = 0; wave < 3; wave++) {
+    setTimeout(() => {
+      for (let i = 0; i < 12; i++) {
+        const sx = cx + (Math.random() - 0.5) * 200;
+        const sy = 0 - Math.random() * 100;
+        const tx = cx + (Math.random() - 0.5) * 80;
+        const ty = cy + (Math.random() - 0.5) * 40;
+        // 用 symbol 画剑（下落动画）
+        if (symbols.length < 30) {
+          const dx = tx - sx;
+          const dy = ty - sy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          symbols.push({
+            text: "╫", x: sx, y: sy,
+            vx: dx / dist * 8, vy: dy / dist * 8,
+            color: "#ffd700", life: 600, gravity: 0,
+            born: performance.now(),
+          });
+        }
+      }
+      // 每波落地金光
+      spawnRing(cx, cy, "#ffd700", 4, 500, 5);
+    }, wave * 700);
+  }
+  // 中心金光绽放
+  spawnRing(cx, cy, "#ffffff", 6, 1000, 8);
+  shakeAmp = 10;
+  flashAlpha = 0.15;
+}
+
+// 天地同寿：五色光柱冲天 + 全屏彩色绽放（4s，最强）
+function spellArmageddon(cx, cy) {
+  const colors = ["#ffd700", "#22c55e", "#3b82f6", "#ef4444", "#a855f7"]; // 金木水火土
+  // 五色光柱（从桌宠位置向上冲天）
+  for (let c = 0; c < colors.length; c++) {
+    setTimeout(() => {
+      // 上升的彩色粒子柱
+      for (let i = 0; i < 20; i++) {
+        const ox = (Math.random() - 0.5) * 30;
+        spawnDot(cx + ox, cy, (Math.random() - 0.5) * 1, -6 - Math.random() * 4, colors[c], 4, 1500, -0.02);
+      }
+      // 彩色扩散环
+      spawnRing(cx, cy, colors[c], 5, 800, 6);
+    }, c * 300);
+  }
+  // 全屏彩色绽放（延迟 1.5s 后大爆发）
+  setTimeout(() => {
+    for (let i = 0; i < 60; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 4 + Math.random() * 6;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, color, 4, 1500, 0.03);
+    }
+    // 多层彩色环
+    for (let c of colors) {
+      spawnRing(cx, cy, c, 6, 1000, 7);
+    }
+    shakeAmp = 15;
+    flashAlpha = 0.3;
+  }, 1500);
+  // 初始震撼
+  shakeAmp = 10;
+  flashAlpha = 0.2;
+}
+
 // ===== 预渲染发光球（避免每帧 createRadialGradient 的性能开销）=====
 const glowCache = {};
 function getGlow(color, size) {

@@ -46,6 +46,9 @@ pub enum CultEvent {
     RealmUp(i64),    // 突破升境界
     Deviation,       // 走火入魔
     Ascension,       // 飞升
+    MountEquipped(i64), // 装备坐骑(1-5)
+    MountUnequipped,    // 卸下坐骑
+    SpellCast { spell: String }, // 施展法术
 }
 
 /// 境界信息表
@@ -58,6 +61,27 @@ const BREAKTHROUGH_PILL_PRICE: [i64; 6] = [200, 500, 1000, 3000, 8000, 99999];
 /// 突破成功率（按当前境界索引，越高越难）
 const BREAKTHROUGH_RATE: [f32; 6] = [0.90, 0.85, 0.80, 0.70, 0.60, 0.50];
 
+/// 坐骑信息表（索引 1-5 对应 mount_id）
+/// (名称, 价格, 最低境界要求)
+const MOUNT_INFO: [(&str, i64, i64); 6] = [
+    ("无", 0, 0),       // 0=占位
+    ("飞剑", 1000, 1),  // 1
+    ("葫芦", 2000, 2),  // 2
+    ("青龙", 5000, 3),  // 3
+    ("麒麟", 8000, 4),  // 4
+    ("凤凰", 15000, 5), // 5
+];
+
+/// 法术信息表
+/// (名称, 价格)
+const SPELL_INFO: [(&str, i64); 5] = [
+    ("fireball", 300),     // 火球术
+    ("ice", 600),          // 冰封术
+    ("thunder", 1200),     // 雷劫术
+    ("swords", 3000),      // 万剑诀
+    ("armageddon", 8000),  // 天地同寿
+];
+
 pub fn realm_name(realm: i64) -> &'static str {
     REALM_NAMES.get(realm as usize).copied().unwrap_or("？？？")
 }
@@ -68,6 +92,66 @@ pub fn breakthrough_price(realm: i64) -> i64 {
 
 pub fn breakthrough_rate(realm: i64) -> f32 {
     BREAKTHROUGH_RATE.get(realm as usize).copied().unwrap_or(0.5)
+}
+
+/// 坐骑名称
+pub fn mount_name(mid: i64) -> &'static str {
+    MOUNT_INFO.get(mid as usize).map(|(n, _, _)| *n).unwrap_or("？？？")
+}
+
+/// 坐骑价格
+pub fn mount_price(mid: i64) -> i64 {
+    MOUNT_INFO.get(mid as usize).map(|(_, p, _)| *p).unwrap_or(99999)
+}
+
+/// 坐骑最低境界
+pub fn mount_min_realm(mid: i64) -> i64 {
+    MOUNT_INFO.get(mid as usize).map(|(_, _, r)| *r).unwrap_or(0)
+}
+
+/// 法术名称（中文）
+pub fn spell_name(spell: &str) -> &'static str {
+    match spell {
+        "fireball" => "火球术",
+        "ice" => "冰封术",
+        "thunder" => "雷劫术",
+        "swords" => "万剑诀",
+        "armageddon" => "天地同寿",
+        _ => "未知法术",
+    }
+}
+
+/// 法术价格
+pub fn spell_price(spell: &str) -> i64 {
+    SPELL_INFO
+        .iter()
+        .find(|(k, _)| *k == spell)
+        .map(|(_, p)| *p)
+        .unwrap_or(99999)
+}
+
+/// 从 item 字符串提取 mount_id（"mount_sword" → 1）
+fn mount_id_from_item(item: &str) -> i64 {
+    match item {
+        "mount_sword" => 1,
+        "mount_gourd" => 2,
+        "mount_dragon" => 3,
+        "mount_qilin" => 4,
+        "mount_phoenix" => 5,
+        _ => 0,
+    }
+}
+
+/// 检查是否拥有某坐骑
+fn mount_owned(ev: &save::EventState, mid: i64) -> bool {
+    match mid {
+        1 => ev.owned_mount_sword,
+        2 => ev.owned_mount_gourd,
+        3 => ev.owned_mount_dragon,
+        4 => ev.owned_mount_qilin,
+        5 => ev.owned_mount_phoenix,
+        _ => false,
+    }
 }
 
 /// 像素打工仔的完整内部状态。
@@ -468,7 +552,10 @@ impl PetState {
         }
     }
 
-    /// 购买道具。item 取值: "qi_pill" | "life_pill" | "spirit_talisman" | "breakthrough_pill"
+    /// 购买道具/坐骑/法术。
+    /// item 取值: 丹药(qi_pill/life_pill/spirit_talisman/breakthrough_pill)
+    ///            坐骑(mount_sword/mount_gourd/mount_dragon/mount_qilin/mount_phoenix)
+    ///            法术(spell_fireball/spell_ice/spell_thunder/spell_swords/spell_armageddon)
     pub fn buy_item(
         &mut self,
         ev: &mut save::EventState,
@@ -478,13 +565,39 @@ impl PetState {
         if !ev.cultivation_mode {
             return Err("需先开启修仙模式".into());
         }
+        // ===== 查价 =====
         let price = match item {
             "qi_pill" => 50,
             "life_pill" => 100,
             "spirit_talisman" => 200,
             "breakthrough_pill" => breakthrough_price(ev.cultivation_realm),
+            "mount_sword" => MOUNT_INFO[1].1,
+            "mount_gourd" => MOUNT_INFO[2].1,
+            "mount_dragon" => MOUNT_INFO[3].1,
+            "mount_qilin" => MOUNT_INFO[4].1,
+            "mount_phoenix" => MOUNT_INFO[5].1,
+            "spell_fireball" => SPELL_INFO[0].1,
+            "spell_ice" => SPELL_INFO[1].1,
+            "spell_thunder" => SPELL_INFO[2].1,
+            "spell_swords" => SPELL_INFO[3].1,
+            "spell_armageddon" => SPELL_INFO[4].1,
             _ => return Err("未知道具".into()),
         };
+        // ===== 坐骑境界门槛 + 已拥有检查 =====
+        match item {
+            "mount_sword" | "mount_gourd" | "mount_dragon" | "mount_qilin" | "mount_phoenix" => {
+                let mid = mount_id_from_item(item);
+                let (_, _, min_realm) = MOUNT_INFO[mid as usize];
+                if ev.cultivation_realm < min_realm {
+                    return Err(format!("境界不足，需{}以上", realm_name(min_realm)));
+                }
+                let owned = mount_owned(ev, mid);
+                if owned {
+                    return Err("已拥有此坐骑".into());
+                }
+            }
+            _ => {}
+        }
         if (self.savings as i64) < price {
             return Err(format!("灵石不足，需要 {}", price));
         }
@@ -493,7 +606,6 @@ impl PetState {
         match item {
             "qi_pill" => {
                 ev.item_qi_pill += 1;
-                // 立即回气（其实也可以先持有再激活；这里直接生效，简化）
                 self.stamina = (self.stamina + 50.0).min(100.0);
             }
             "life_pill" => {
@@ -501,19 +613,81 @@ impl PetState {
             }
             "spirit_talisman" => {
                 ev.item_spirit_talisman += 1;
-                // 立即激活：修为 ×2 持续 1 小时
                 ev.spirit_boost_until = (now_secs as i64) + 3600;
             }
             "breakthrough_pill" => {
-                // 突破丹：直接尝试突破
                 return self.attempt_breakthrough(ev, now_secs);
             }
+            // 坐骑：标记拥有 + 自动装备
+            "mount_sword" => { ev.owned_mount_sword = true; ev.equipped_mount = 1; events.push(CultEvent::MountEquipped(1)); }
+            "mount_gourd" => { ev.owned_mount_gourd = true; ev.equipped_mount = 2; events.push(CultEvent::MountEquipped(2)); }
+            "mount_dragon" => { ev.owned_mount_dragon = true; ev.equipped_mount = 3; events.push(CultEvent::MountEquipped(3)); }
+            "mount_qilin" => { ev.owned_mount_qilin = true; ev.equipped_mount = 4; events.push(CultEvent::MountEquipped(4)); }
+            "mount_phoenix" => { ev.owned_mount_phoenix = true; ev.equipped_mount = 5; events.push(CultEvent::MountEquipped(5)); }
+            // 法术：库存+1
+            "spell_fireball" => { ev.spell_fireball += 1; }
+            "spell_ice" => { ev.spell_ice += 1; }
+            "spell_thunder" => { ev.spell_thunder += 1; }
+            "spell_swords" => { ev.spell_swords += 1; }
+            "spell_armageddon" => { ev.spell_armageddon += 1; }
             _ => {}
         }
         events.push(CultEvent::Bought {
             item: item.to_string(),
         });
         Ok(events)
+    }
+
+    /// 装备/卸下坐骑。mount_id: 0=卸下, 1-5=装备对应坐骑。
+    pub fn equip_mount(
+        &mut self,
+        ev: &mut save::EventState,
+        mount_id: i64,
+    ) -> Result<Vec<CultEvent>, String> {
+        if mount_id == 0 {
+            ev.equipped_mount = 0;
+            return Ok(vec![CultEvent::MountUnequipped]);
+        }
+        if !mount_owned(ev, mount_id) {
+            return Err("未拥有此坐骑".into());
+        }
+        ev.equipped_mount = mount_id;
+        Ok(vec![CultEvent::MountEquipped(mount_id)])
+    }
+
+    /// 施展法术（消耗一个库存，返回 SpellCast 事件触发特效）。
+    pub fn cast_spell(
+        &mut self,
+        ev: &mut save::EventState,
+        spell: &str,
+    ) -> Result<Vec<CultEvent>, String> {
+        if !ev.cultivation_mode {
+            return Err("需先开启修仙模式".into());
+        }
+        match spell {
+            "fireball" => {
+                if ev.spell_fireball <= 0 { return Err("没有火球术".into()); }
+                ev.spell_fireball -= 1;
+            }
+            "ice" => {
+                if ev.spell_ice <= 0 { return Err("没有冰封术".into()); }
+                ev.spell_ice -= 1;
+            }
+            "thunder" => {
+                if ev.spell_thunder <= 0 { return Err("没有雷劫术".into()); }
+                ev.spell_thunder -= 1;
+            }
+            "swords" => {
+                if ev.spell_swords <= 0 { return Err("没有万剑诀".into()); }
+                ev.spell_swords -= 1;
+            }
+            "armageddon" => {
+                if ev.spell_armageddon <= 0 { return Err("没有天地同寿".into()); }
+                ev.spell_armageddon -= 1;
+            }
+            _ => return Err("未知法术".into()),
+        }
+        Ok(vec![CultEvent::SpellCast { spell: spell.to_string() }])
     }
 
     /// 尝试突破。需修为满 100，消耗一颗突破丹（由 buy_item("breakthrough_pill") 触发）。

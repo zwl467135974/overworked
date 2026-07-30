@@ -23,7 +23,8 @@ use std::time::Duration;
 
 use engine::save::SaveStore;
 use engine::state::{
-    breakthrough_price, realm_name, today_str_from_secs, weekday_from_secs, CultEvent,
+    breakthrough_price, mount_name, realm_name, spell_name, today_str_from_secs, weekday_from_secs,
+    CultEvent,
 };
 use engine::{CultivationPayload, PetState, StatsPayload, TickEvent};
 use rendering_bridge::Expression;
@@ -161,6 +162,11 @@ struct ShopData {
     spirit_talisman: i64,
     breakthrough_price: i64,
     next_realm: String,
+    // 坐骑
+    owned_mounts: Vec<bool>, // [sword, gourd, dragon, qilin, phoenix]
+    equipped_mount: i64,
+    // 法术库存
+    spells: Vec<i64>, // [fireball, ice, thunder, swords, armageddon]
 }
 
 /// 获取商店数据（商店窗口启动时拉取）。
@@ -183,6 +189,21 @@ fn get_shop_data(state: tauri::State<'_, AppState>) -> ShopData {
         spirit_talisman: ev.item_spirit_talisman,
         breakthrough_price: breakthrough_price(ev.cultivation_realm),
         next_realm: realm_name((ev.cultivation_realm + 1).min(6)).to_string(),
+        owned_mounts: vec![
+            ev.owned_mount_sword,
+            ev.owned_mount_gourd,
+            ev.owned_mount_dragon,
+            ev.owned_mount_qilin,
+            ev.owned_mount_phoenix,
+        ],
+        equipped_mount: ev.equipped_mount,
+        spells: vec![
+            ev.spell_fireball,
+            ev.spell_ice,
+            ev.spell_thunder,
+            ev.spell_swords,
+            ev.spell_armageddon,
+        ],
     }
 }
 
@@ -214,6 +235,56 @@ fn buy_item(
     };
     emit_cult_events(&app, &cult_events);
     // 推送更新数值给所有窗口
+    push_stats_and_cult(&app, &state);
+    Ok(())
+}
+
+/// 装备/卸下坐骑。mount_id: 0=卸下, 1-5=装备。
+#[tauri::command]
+fn equip_mount(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    mount_id: i64,
+) -> Result<(), String> {
+    let cult_events = {
+        let mut pet = state.state.lock().map_err(|e| e.to_string())?;
+        let mut ev = state
+            .save
+            .lock()
+            .map(|s| s.load_events())
+            .map_err(|e| e.to_string())?;
+        let events = pet.equip_mount(&mut ev, mount_id)?;
+        if let Ok(save) = state.save.lock() {
+            let _ = save.save_events(&ev);
+        }
+        events
+    };
+    emit_cult_events(&app, &cult_events);
+    push_stats_and_cult(&app, &state);
+    Ok(())
+}
+
+/// 施展法术（消耗一个库存，触发全屏特效）。
+#[tauri::command]
+fn cast_spell(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    spell: String,
+) -> Result<(), String> {
+    let cult_events = {
+        let mut pet = state.state.lock().map_err(|e| e.to_string())?;
+        let mut ev = state
+            .save
+            .lock()
+            .map(|s| s.load_events())
+            .map_err(|e| e.to_string())?;
+        let events = pet.cast_spell(&mut ev, &spell)?;
+        if let Ok(save) = state.save.lock() {
+            let _ = save.save_events(&ev);
+        }
+        events
+    };
+    emit_cult_events(&app, &cult_events);
     push_stats_and_cult(&app, &state);
     Ok(())
 }
@@ -287,6 +358,22 @@ fn emit_cult_events(app: &tauri::AppHandle, events: &[CultEvent]) {
                         let _ = tray.set_menu(Some(menu));
                     }
                 }
+            }
+            CultEvent::MountEquipped(mid) => {
+                let _ = app.emit("mount-equipped", *mid);
+                let _ = app.emit("bubble-show", format!("骑上了{}！", mount_name(*mid)));
+            }
+            CultEvent::MountUnequipped => {
+                let _ = app.emit("mount-equipped", 0i64);
+                let _ = app.emit("bubble-show", "收起坐骑");
+            }
+            CultEvent::SpellCast { spell } => {
+                // 法术特效：强制开 fx-overlay
+                if let Some(fx_win) = app.get_webview_window("fx-overlay") {
+                    let _ = fx_win.show();
+                }
+                let _ = app.emit("spell-cast", spell.clone());
+                let _ = app.emit("bubble-show", format!("施展{}！", spell_name(spell)));
             }
         }
     }
@@ -1104,6 +1191,8 @@ pub fn run() {
             get_shop_data,
             buy_item,
             toggle_cultivation,
+            equip_mount,
+            cast_spell,
             skin::list_skins,
             skin::read_skin_frame,
             skin::switch_skin

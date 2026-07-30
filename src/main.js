@@ -416,6 +416,222 @@ listen("drag-ended", async () => {
   }
 });
 
+// ===== 修仙坐骑（程序化绘制，画在桌宠下方/身后） =====
+// 调用时 ctx 已 translate 到桌宠中心（原点 0,0），正 Y 向下。
+// 在 drawImage(本体) 之前调用 = 坐骑在桌宠身后/下方。
+// now 用于动画（翅膀拍动/龙游动/剑光拖尾）。
+function drawMount(now) {
+  if (!cultMode || currentMount < 1) return;
+  const t = now / 1000;
+  ctx.globalCompositeOperation = "lighter";
+
+  switch (currentMount) {
+    case 1: drawMountSword(t); break;
+    case 2: drawMountGourd(t); break;
+    case 3: drawMountDragon(t); break;
+    case 4: drawMountQilin(t); break;
+    case 5: drawMountPhoenix(t); break;
+  }
+  ctx.globalCompositeOperation = "source-over";
+}
+
+// 1. 飞剑：银白剑身横置脚下 + 灵光拖尾
+function drawMountSword(t) {
+  const y = 38;
+  // 灵光拖尾（左右渐隐光带）
+  const trail = ctx.createLinearGradient(-40, y, 40, y);
+  trail.addColorStop(0, "rgba(150,200,255,0)");
+  trail.addColorStop(0.5, "rgba(180,220,255,0.4)");
+  trail.addColorStop(1, "rgba(150,200,255,0)");
+  ctx.fillStyle = trail;
+  ctx.fillRect(-40, y - 2, 80, 4);
+  // 剑身（银白长条 + 微微浮动）
+  const float = Math.sin(t * 2) * 1;
+  ctx.fillStyle = "rgba(200,230,255,0.85)";
+  ctx.fillRect(-28, y - 3 + float, 56, 6);
+  // 剑柄
+  ctx.fillStyle = "rgba(255,220,150,0.7)";
+  ctx.fillRect(-32, y - 2 + float, 8, 4);
+  // 剑尖高光
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillRect(24, y - 2 + float, 6, 2);
+  // 脚下灵气粒子
+  for (let i = 0; i < 3; i++) {
+    const px = -20 + i * 20 + Math.sin(t * 3 + i) * 5;
+    const py = y + 4 + Math.sin(t * 4 + i) * 2;
+    ctx.fillStyle = "rgba(180,220,255,0.5)";
+    ctx.beginPath();
+    ctx.arc(px, py, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// 2. 葫芦：金色椭圆葫芦在脚下 + 缭绕灵气
+function drawMountGourd(t) {
+  const y = 36;
+  // 灵气缭绕（底部雾气）
+  for (let i = 0; i < 5; i++) {
+    const px = -20 + i * 10;
+    const py = y + 6 + Math.sin(t * 1.5 + i) * 3;
+    const g = ctx.createRadialGradient(px, py, 0, px, py, 8);
+    g.addColorStop(0, "rgba(200,180,120,0.3)");
+    g.addColorStop(1, "rgba(200,180,120,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(px, py, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 葫芦上球（大）
+  const g1 = ctx.createRadialGradient(0, y + 2, 0, 0, y + 2, 16);
+  g1.addColorStop(0, "rgba(255,230,100,0.9)");
+  g1.addColorStop(0.6, "rgba(220,180,50,0.7)");
+  g1.addColorStop(1, "rgba(180,140,30,0)");
+  ctx.fillStyle = g1;
+  ctx.beginPath();
+  ctx.ellipse(0, y + 2, 16, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 葫芦上球（小/顶部）
+  const g2 = ctx.createRadialGradient(0, y - 8, 0, 0, y - 8, 8);
+  g2.addColorStop(0, "rgba(255,240,150,0.8)");
+  g2.addColorStop(1, "rgba(200,160,40,0)");
+  ctx.fillStyle = g2;
+  ctx.beginPath();
+  ctx.arc(0, y - 8, 8, 0, Math.PI * 2);
+  ctx.fill();
+  // 葫芦口
+  ctx.fillStyle = "rgba(255,200,80,0.6)";
+  ctx.fillRect(-2, y - 14, 4, 4);
+}
+
+// 3. 龙：青龙身躯盘绕脚下 + 龙鳞光
+function drawMountDragon(t) {
+  const y = 36;
+  // 龙身（S 形曲线，用多段圆弧模拟）
+  ctx.strokeStyle = "rgba(80,200,120,0.6)";
+  ctx.lineWidth = 8;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  for (let i = 0; i <= 20; i++) {
+    const px = -36 + i * 3.6;
+    const py = y + Math.sin(i * 0.5 + t * 2) * 6;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  // 龙身发光
+  ctx.strokeStyle = "rgba(150,255,180,0.4)";
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  // 龙头（右端）
+  const headX = 36;
+  const headY = y + Math.sin(20 * 0.5 + t * 2) * 6;
+  const hg = ctx.createRadialGradient(headX, headY, 0, headX, headY, 10);
+  hg.addColorStop(0, "rgba(120,255,150,0.8)");
+  hg.addColorStop(1, "rgba(80,200,120,0)");
+  ctx.fillStyle = hg;
+  ctx.beginPath();
+  ctx.arc(headX, headY, 10, 0, Math.PI * 2);
+  ctx.fill();
+  // 龙眼
+  ctx.fillStyle = "rgba(255,255,200,0.9)";
+  ctx.beginPath();
+  ctx.arc(headX + 2, headY - 2, 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// 4. 麒麟：金色瑞兽轮廓 + 脚踏祥云
+function drawMountQilin(t) {
+  const y = 38;
+  // 祥云（底部多层）
+  for (let i = 0; i < 4; i++) {
+    const cx = -24 + i * 16;
+    const cy = y + 4 + Math.sin(t + i) * 2;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 12);
+    g.addColorStop(0, "rgba(255,220,150,0.4)");
+    g.addColorStop(0.6, "rgba(255,200,100,0.2)");
+    g.addColorStop(1, "rgba(255,200,100,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 12, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 麒麟身体（金色椭圆兽身）
+  const bg = ctx.createRadialGradient(0, y, 0, 0, y, 22);
+  bg.addColorStop(0, "rgba(255,230,120,0.7)");
+  bg.addColorStop(0.6, "rgba(220,180,50,0.5)");
+  bg.addColorStop(1, "rgba(180,140,30,0)");
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.ellipse(0, y, 22, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 麒麟头部（前方）
+  const hg = ctx.createRadialGradient(18, y - 4, 0, 18, y - 4, 8);
+  hg.addColorStop(0, "rgba(255,240,150,0.8)");
+  hg.addColorStop(1, "rgba(220,180,50,0)");
+  ctx.fillStyle = hg;
+  ctx.beginPath();
+  ctx.arc(18, y - 4, 8, 0, Math.PI * 2);
+  ctx.fill();
+  // 独角
+  ctx.strokeStyle = "rgba(255,240,180,0.7)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(20, y - 10);
+  ctx.lineTo(24, y - 16);
+  ctx.stroke();
+}
+
+// 5. 凤凰：火凤展翅 + 烈焰拖尾
+function drawMountPhoenix(t) {
+  const y = 36;
+  const wingFlap = Math.sin(t * 4) * 0.3;
+  // 左翅（展开的火焰翼）
+  drawWing(-2, y - 4, -1, wingFlap, t);
+  // 右翅
+  drawWing(2, y - 4, 1, wingFlap, t);
+  // 凤凰身体（火红椭圆）
+  const bg = ctx.createRadialGradient(0, y, 0, 0, y, 14);
+  bg.addColorStop(0, "rgba(255,200,80,0.8)");
+  bg.addColorStop(0.5, "rgba(255,120,30,0.6)");
+  bg.addColorStop(1, "rgba(200,60,0,0)");
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.ellipse(0, y, 14, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 凤尾拖尾（向后飘的火焰）
+  for (let i = 0; i < 5; i++) {
+    const tx = -10 - i * 6;
+    const ty = y + 2 + Math.sin(t * 3 + i) * 3;
+    const g = ctx.createRadialGradient(tx, ty, 0, tx, ty, 6);
+    g.addColorStop(0, "rgba(255,180,60,0.5)");
+    g.addColorStop(1, "rgba(255,100,0,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawWing(x, y, dir, flap, t) {
+  // 翅膀：多根羽毛（渐变色）
+  for (let i = 0; i < 4; i++) {
+    const angle = dir * (0.3 + i * 0.25 + flap);
+    const len = 14 + i * 3;
+    const ex = x + Math.cos(angle - Math.PI / 2) * len * dir;
+    const ey = y + Math.sin(angle - Math.PI / 2) * len;
+    const g = ctx.createLinearGradient(x, y, ex, ey);
+    g.addColorStop(0, "rgba(255,200,80,0.7)");
+    g.addColorStop(1, "rgba(255,80,0,0)");
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 4 - i * 0.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+  }
+}
+
 // ===== 修仙境界光环（程序化绘制，不依赖美术） =====
 // 在桌宠本体绘制后叠加，跟随 translate/scale 变换。
 // 调用时 ctx 已 translate 到桌宠中心（原点），绘制坐标以原点为参考。
@@ -678,8 +894,8 @@ function render(now) {
     bounceDx = b.dx;
     bounceDy = b.dy;
   }
-  // 化神(5)+：悬浮（脱离地面，缓慢上下浮动）
-  if (cultMode && cultRealm >= 5) {
+  // 化神(5)+ 或有坐骑：悬浮（脱离地面，缓慢上下浮动）
+  if (cultMode && (cultRealm >= 5 || currentMount > 0)) {
     bounceDy += Math.sin(now / 600) * 3 - 4; // 基线抬高4px + 浮动±3
   }
   ctx.filter = filterStr;
@@ -694,12 +910,16 @@ function render(now) {
     if (!oneShotAction) {
       ctx.rotate(currentPayload.rotation);
     }
+    // 坐骑：在本体之前画 = 在桌宠身后/下方
+    drawMount(now);
     // 按图片实际尺寸等比缩放到高度96，居中显示（支持任意尺寸帧）
     const iw = imgToDraw.naturalWidth || 64;
     const ih = imgToDraw.naturalHeight || 64;
     const dh = 96;
     const dw = iw * (dh / ih);
-    ctx.drawImage(imgToDraw, -dw / 2, -dh / 2, dw, dh);
+    // 有坐骑时桌宠整体上移（坐在坐骑上）
+    const mountLift = currentMount > 0 ? -6 : 0;
+    ctx.drawImage(imgToDraw, -dw / 2, -dh / 2 + mountLift, dw, dh);
     // 修仙境界光环（叠加在本体上，跟随变换）
     drawRealmAura(now);
     ctx.restore();
@@ -1241,7 +1461,13 @@ const barExp = document.getElementById("bar-exp");
 const statsPanel = document.getElementById("stats-panel");
 let cultMode = false;
 let cultRealm = 0; // 当前境界 0-6（render 循环读取，画光环/金丹等）
+let currentMount = 0; // 当前装备坐骑 0=无, 1-5
 const REALM_NAMES = ["凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升"];
+
+// 坐骑装备/卸下事件
+listen("mount-equipped", (event) => {
+  currentMount = event.payload || 0;
+});
 
 // 修仙面板更新（tick 推送 + 商店购买后推送）
 listen("cultivation-update", (event) => {

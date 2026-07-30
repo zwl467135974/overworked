@@ -262,6 +262,84 @@ body {
   cursor: not-allowed;
 }
 
+/* 坐骑/法术按钮 */
+.btn-equip {
+  padding: 4px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  color: #6ad7c1;
+  background: #2a4a3a;
+  border: 1px solid #4a8a6a;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-equip:hover {
+  background: #3a6a5a;
+  color: #9af7d7;
+}
+
+.btn-equipped {
+  padding: 4px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  color: #ffd97a;
+  background: #4a3818;
+  border: 1px solid #8a6a3a;
+  border-radius: 3px;
+  cursor: default;
+}
+
+.btn-cast {
+  padding: 4px 12px;
+  margin-left: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  color: #ff9870;
+  background: #4a2a1a;
+  border: 1px solid #8a4a3a;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-cast:hover {
+  background: #6a3a2a;
+  color: #ffb890;
+}
+
+.btn-group {
+  display: flex;
+  align-items: center;
+}
+
+/* 坐骑/法术图标 */
+.mount-icon {
+  color: #6ad7c1 !important;
+  border-color: #4a8a6a !important;
+}
+.spell-icon {
+  color: #ff9870 !important;
+  border-color: #8a4a3a !important;
+}
+
+/* 标签 */
+.lock-tag {
+  font-size: 9px;
+  font-weight: normal;
+  color: #8a7450;
+  background: rgba(138, 116, 80, 0.15);
+  padding: 1px 4px;
+  border-radius: 2px;
+  margin-left: 4px;
+}
+
+.stock-tag {
+  font-size: 10px;
+  font-weight: normal;
+  color: #6ad7c1;
+  margin-left: 4px;
+}
+
 /* 背包 */
 .inventory {
   flex-shrink: 0;

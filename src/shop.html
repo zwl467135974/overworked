@@ -37,10 +37,10 @@
         <p class="hint" id="mode-hint">攒够 500 灵石，踏入修仙。普通模式守规矩，修仙模式见真章。</p>
       </section>
 
-      <!-- 道具商店（修仙模式可见） -->
+      <!-- 丹药商店（修仙模式可见） -->
       <section class="shop" id="shop-section" hidden>
-        <div class="section-title">珍宝阁</div>
-        <div class="item-list">
+        <div class="section-title">丹药阁</div>
+        <div class="item-list" id="pill-list">
           <div class="item-card" data-item="breakthrough_pill">
             <div class="item-icon">丹</div>
             <div class="item-info">
@@ -86,6 +86,18 @@
             </div>
           </div>
         </div>
+      </section>
+
+      <!-- 坐骑商店（修仙模式可见） -->
+      <section class="shop" id="mount-section" hidden>
+        <div class="section-title">灵兽苑 · 坐骑</div>
+        <div class="item-list" id="mount-list"></div>
+      </section>
+
+      <!-- 法术商店（修仙模式可见） -->
+      <section class="shop" id="spell-section" hidden>
+        <div class="section-title">万法殿 · 法术</div>
+        <div class="item-list" id="spell-list"></div>
       </section>
 
       <!-- 背包 -->
