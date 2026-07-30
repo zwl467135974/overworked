@@ -60,6 +60,7 @@ pub struct EventState {
     pub item_spirit_talisman: i64,     // 聚灵符
     pub spirit_boost_until: i64,       // 聚灵符效果结束时间戳
     pub savings_milestone_shown: bool, // 存款首达500彩蛋是否已触发
+    pub ever_cultivated: bool,         // 是否曾经修仙过（化凡后重入不扣500）
 }
 
 /// 存档存储器。持 SQLite 连接，所有操作同步（SQLite 够快，无需异步）。
@@ -118,7 +119,8 @@ impl SaveStore {
                 item_life_pill INTEGER DEFAULT 0,
                 item_spirit_talisman INTEGER DEFAULT 0,
                 spirit_boost_until INTEGER DEFAULT 0,
-                savings_milestone_shown INTEGER DEFAULT 0
+                savings_milestone_shown INTEGER DEFAULT 0,
+                ever_cultivated INTEGER DEFAULT 0
             );
             INSERT OR IGNORE INTO stats (id) VALUES (1);
             INSERT OR IGNORE INTO events (id) VALUES (1);",
@@ -133,6 +135,7 @@ impl SaveStore {
             "item_spirit_talisman INTEGER DEFAULT 0",
             "spirit_boost_until INTEGER DEFAULT 0",
             "savings_milestone_shown INTEGER DEFAULT 0",
+            "ever_cultivated INTEGER DEFAULT 0",
         ] {
             let sql = format!("ALTER TABLE events ADD COLUMN {col}");
             let _ = conn.execute(&sql, []); // 忽略"已存在"错误
@@ -269,13 +272,13 @@ impl SaveStore {
 
     /// 读取事件追踪状态。
     pub fn load_events(&self) -> EventState {
-        let row: rusqlite::Result<(i64, Option<String>, i64, i64, Option<String>, i64, i64, i64, i64, i64, i64, f64, i64, i64, i64, i64, i64)> =
+        let row: rusqlite::Result<(i64, Option<String>, i64, i64, Option<String>, i64, i64, i64, i64, i64, i64, f64, i64, i64, i64, i64, i64, i64)> =
             self.conn.query_row(
                 "SELECT last_payday_month, last_teambuilding_day, has_promoted,
                         mood_zero_days, last_mood_day, vacation_until, leave_until, pet_variant, fx_enabled,
                         cultivation_mode, cultivation_realm, cultivation_exp,
                         item_qi_pill, item_life_pill, item_spirit_talisman, spirit_boost_until,
-                        savings_milestone_shown
+                        savings_milestone_shown, ever_cultivated
                  FROM events WHERE id = 1",
                 [],
                 |r| {
@@ -283,12 +286,12 @@ impl SaveStore {
                         r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?,
                         r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?,
                         r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?, r.get(14)?, r.get(15)?,
-                        r.get(16)?,
+                        r.get(16)?, r.get(17)?,
                     ))
                 },
             );
         match row {
-            Ok((pm, tb, hp, mzd, lmd, vu, lu, pv, fx, cm, cr, ce, iqp, ilp, ist, sbu, sms)) => EventState {
+            Ok((pm, tb, hp, mzd, lmd, vu, lu, pv, fx, cm, cr, ce, iqp, ilp, ist, sbu, sms, ec)) => EventState {
                 last_payday_month: pm,
                 last_teambuilding_day: tb.unwrap_or_default(),
                 has_promoted: hp != 0,
@@ -306,6 +309,7 @@ impl SaveStore {
                 item_spirit_talisman: ist,
                 spirit_boost_until: sbu,
                 savings_milestone_shown: sms != 0,
+                ever_cultivated: ec != 0,
             },
             Err(_) => EventState::default(),
         }
@@ -331,7 +335,8 @@ impl SaveStore {
                 item_life_pill = ?14,
                 item_spirit_talisman = ?15,
                 spirit_boost_until = ?16,
-                savings_milestone_shown = ?17
+                savings_milestone_shown = ?17,
+                ever_cultivated = ?18
              WHERE id = 1",
             params![
                 ev.last_payday_month,
@@ -351,6 +356,7 @@ impl SaveStore {
                 ev.item_spirit_talisman,
                 ev.spirit_boost_until,
                 ev.savings_milestone_shown as i64,
+                ev.ever_cultivated as i64,
             ],
         )?;
         Ok(())

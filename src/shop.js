@@ -44,9 +44,9 @@ function render(data) {
 
   // 模式切换
   if (data.cultivation_mode) {
-    btnToggleMode.textContent = "切回普通模式（做个凡人）";
+    btnToggleMode.textContent = "化凡（做回凡人）";
     btnToggleMode.classList.add("off");
-    modeHint.textContent = "修仙模式：境界/修为/灵石全开。打工、专注、交付皆可积累修为。";
+    modeHint.textContent = "修仙模式：境界/修为/灵石全开。打工、专注、交付皆可积累修为。化凡后可随时重入，无需再花灵石。";
     shopSection.hidden = false;
     invSection.hidden = false;
     // 飞升后禁用突破
@@ -57,6 +57,13 @@ function render(data) {
         btn.textContent = "已飞升";
       }
     }
+  } else if (data.ever_cultivated) {
+    // 曾修仙过（化凡状态）：重入免费
+    btnToggleMode.textContent = "重入修仙（免费）";
+    btnToggleMode.classList.remove("off");
+    modeHint.textContent = "道基犹在，随时可重入修仙，无需再花灵石。";
+    shopSection.hidden = true;
+    invSection.hidden = true;
   } else {
     btnToggleMode.textContent = "开启修仙之路（500 灵石）";
     btnToggleMode.classList.remove("off");

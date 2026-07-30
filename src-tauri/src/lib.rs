@@ -151,6 +151,7 @@ fn open_shop(app: tauri::AppHandle) -> Result<(), String> {
 #[derive(Debug, serde::Serialize)]
 struct ShopData {
     cultivation_mode: bool,
+    ever_cultivated: bool,
     realm: i64,
     realm_name: String,
     exp: f32,
@@ -172,6 +173,7 @@ fn get_shop_data(state: tauri::State<'_, AppState>) -> ShopData {
     };
     ShopData {
         cultivation_mode: ev.cultivation_mode,
+        ever_cultivated: ev.ever_cultivated,
         realm: ev.cultivation_realm,
         realm_name: realm_name(ev.cultivation_realm).to_string(),
         exp: ev.cultivation_exp,
@@ -252,7 +254,7 @@ fn emit_cult_events(app: &tauri::AppHandle, events: &[CultEvent]) {
             }
             CultEvent::CultivationOff => {
                 let _ = app.emit("cultivation-off", ());
-                let _ = app.emit("bubble-show", "还是打工踏实");
+                let _ = app.emit("bubble-show", "化凡归尘…做回凡人");
             }
             CultEvent::Bought { item } => {
                 let _ = app.emit("cult-bought", item.clone());

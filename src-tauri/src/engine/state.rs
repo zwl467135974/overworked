@@ -435,8 +435,8 @@ impl PetState {
     // ===== 修仙指令路径（command 调用，返回事件列表） =====
 
     /// 切换修仙模式。
-    /// 开启前提：存款 >= 500（买得起入门券）。
-    /// 关闭：随时可关。
+    /// 开启前提：首次需存款 >= 500（入门券）；曾经修仙过则免费重入。
+    /// 关闭（化凡）：随时可关，保留境界进度，重入不扣费。
     pub fn toggle_cultivation(
         &mut self,
         ev: &mut save::EventState,
@@ -444,19 +444,24 @@ impl PetState {
     ) -> Result<Vec<CultEvent>, String> {
         let mut events = Vec::new();
         if ev.cultivation_mode {
-            // 切回普通模式
+            // 化凡：切回普通模式，保留境界进度
             ev.cultivation_mode = false;
             events.push(CultEvent::CultivationOff);
             Ok(events)
         } else {
-            // 开启：扣 500 灵石，进入练气期
-            if self.savings < 500.0 {
-                return Err("灵石不足，入门券需要 500".into());
+            // 重入修仙：曾经修仙过不扣500
+            if !ev.ever_cultivated {
+                if self.savings < 500.0 {
+                    return Err("灵石不足，入门券需要 500".into());
+                }
+                self.savings -= 500.0;
             }
-            self.savings -= 500.0;
+            ev.ever_cultivated = true;
             ev.cultivation_mode = true;
-            ev.cultivation_realm = 1; // 凡人→练气
-            ev.cultivation_exp = 0.0;
+            if ev.cultivation_realm == 0 {
+                ev.cultivation_realm = 1; // 首次：凡人→练气
+            }
+            // 已修仙过的保留原境界，不重置为练气
             events.push(CultEvent::CultivationOn);
             let _ = now_secs;
             Ok(events)
