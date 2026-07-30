@@ -99,7 +99,7 @@ fn feed_coffee(app: tauri::AppHandle, state: tauri::State<'_, AppState>) {
     let _ = app.emit("bubble-show", "续命了！咖啡因注入");
 }
 
-/// 切换特效开关（emit 事件让前端启用/禁用粒子）。
+/// 切换特效开关（show/hide fx-overlay + emit 通知前端）。
 #[tauri::command]
 fn toggle_fx(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> bool {
     let new_enabled = if let Ok(mut save) = state.save.lock() {
@@ -111,6 +111,9 @@ fn toggle_fx(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> bool {
     } else {
         return false;
     };
+    if let Some(fx_win) = app.get_webview_window("fx-overlay") {
+        let _ = if new_enabled { fx_win.show() } else { fx_win.hide() };
+    }
     let _ = app.emit("fx-toggled", new_enabled);
     new_enabled
 }
@@ -302,6 +305,14 @@ pub fn run() {
                 } else {
                     let (x, y) = default_pos();
                     let _ = win.set_position(PhysicalPosition::new(x, y));
+                }
+            }
+
+            // ===== fx-overlay 配置（点击穿透 + 根据存档决定显示）=====
+            if let Some(fx_win) = app.get_webview_window("fx-overlay") {
+                let _ = fx_win.set_ignore_cursor_events(true);
+                if !save_store.load_events().fx_enabled {
+                    let _ = fx_win.hide();
                 }
             }
 
@@ -568,6 +579,9 @@ pub fn run() {
                             let _ = save.save_events(&ev);
                             en
                         } else { false };
+                        if let Some(fx_win) = app_handle.get_webview_window("fx-overlay") {
+                            let _ = if enabled { fx_win.show() } else { fx_win.hide() };
+                        }
                         let _ = app_handle.emit("fx-toggled", enabled);
                         let msg = if enabled { "特效已开启" } else { "特效已关闭" };
                         let _ = app_handle.emit("bubble-show", msg);
