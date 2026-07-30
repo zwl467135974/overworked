@@ -72,6 +72,11 @@ function drawPet(ctx, ox, oy, opts) {
     lean = 0, armRaise = false, slouch = 0,
     glasses = false, // 度假墨镜
     holdingBox = false, // 搬箱子
+    badge = false, // 升职铭牌（头顶金色牌）
+    moneyBag = false, // 发工资（手边钱袋/金币）
+    cup = false, // 团建（举杯）
+    lunchbox = false, // 午休（旁边饭盒）
+    beachChair = false, // 度假（躺椅+椰树）
   } = opts;
 
   const cx = ox + 32; // 画布中心
@@ -194,7 +199,77 @@ function drawPet(ctx, ox, oy, opts) {
     ctx.fillStyle = C.dark;
     ctx.fillRect(headX + 4, headY + 10, headW - 8, 3);
     ctx.fillStyle = C.shirtShadow;
-    ctx.fillRect(headX + headW / 2, headY + 10, 2, 3); // 鼻梁
+    ctx.fillRect(headX + headW / 2, headY + 10, 2, 3);
+  }
+
+  // ===== 标志性元素（区分 Phase 3 事件）=====
+
+  // 升职铭牌：头顶金色长方形 + 挂绳
+  if (badge) {
+    ctx.fillStyle = C.outline;
+    ctx.fillRect(headX + 5, headY - 6, headW - 10, 5); // 牌轮廓
+    ctx.fillStyle = C.gold;
+    ctx.fillRect(headX + 6, headY - 5, headW - 12, 3); // 金牌
+    ctx.fillStyle = C.dark;
+    ctx.fillRect(headX + 9, headY - 4, headW - 18, 1); // 牌上的字
+    ctx.fillStyle = C.outline;
+    ctx.fillRect(headX + 8, headY - 1, 1, 1); // 左挂绳
+    ctx.fillRect(headX + headW - 9, headY - 1, 1, 1); // 右挂绳
+  }
+
+  // 发工资：手边钱袋/金币
+  if (moneyBag) {
+    // 右手边一摞金币
+    ctx.fillStyle = C.outline;
+    ctx.fillRect(bodyX + bodyW + 4, bodyY + 8, 8, 6);
+    ctx.fillStyle = C.gold;
+    ctx.fillRect(bodyX + bodyW + 5, bodyY + 9, 6, 2); // 上层金币
+    ctx.fillRect(bodyX + bodyW + 5, bodyY + 12, 6, 1); // 下层
+    ctx.fillStyle = C.dark;
+    ctx.fillRect(bodyX + bodyW + 7, bodyY + 9, 1, 1); // ¥ 符号占位
+    // 飘的钱币
+    ctx.fillStyle = C.gold;
+    ctx.fillRect(bodyX + bodyW + 6, bodyY + 4, 2, 2);
+  }
+
+  // 团建：举杯（手里一个杯子）
+  if (cup) {
+    const cupX = bodyX + bodyW - 2;
+    const cupY = bodyY - 2;
+    ctx.fillStyle = C.outline;
+    ctx.fillRect(cupX, cupY, 6, 7);
+    ctx.fillStyle = C.sweat; // 杯子用蓝色（饮料）
+    ctx.fillRect(cupX + 1, cupY + 1, 4, 5);
+    ctx.fillStyle = C.white;
+    ctx.fillRect(cupX + 1, cupY + 1, 4, 1); // 杯口
+    // 吸管
+    ctx.fillStyle = C.dark;
+    ctx.fillRect(cupX + 3, cupY - 3, 1, 4);
+  }
+
+  // 午休：旁边饭盒
+  if (lunchbox) {
+    const lbX = bodyX + bodyW + 2;
+    const lbY = bodyY + 12;
+    ctx.fillStyle = C.outline;
+    ctx.fillRect(lbX, lbY, 8, 5);
+    ctx.fillStyle = "#f87171"; // 红色饭盒
+    ctx.fillRect(lbX + 1, lbY + 1, 6, 3);
+    ctx.fillStyle = C.white;
+    ctx.fillRect(lbX + 1, lbY + 1, 6, 1); // 盖缝
+  }
+
+  // 度假：躺椅 + 椰树
+  if (beachChair) {
+    // 椰树（左上角）
+    ctx.fillStyle = "#7c4a1e";
+    ctx.fillRect(ox + 2, oy + 30, 2, 12); // 树干
+    ctx.fillStyle = "#16a34a";
+    ctx.fillRect(ox, oy + 28, 6, 2); // 叶子
+    ctx.fillRect(ox + 1, oy + 26, 4, 2);
+    // 椰果
+    ctx.fillStyle = C.dark;
+    ctx.fillRect(ox + 3, oy + 30, 1, 1);
   }
 }
 
@@ -296,7 +371,7 @@ function drawMouth(ctx, hx, hy, hw, mode) {
  * 侧面视角（walk/leave/return 用，64×64）。
  */
 function drawPetSide(ctx, ox, oy, opts) {
-  const { faceDir = 1, step = 0, bodyDy = 0, holdingBox = false } = opts;
+  const { faceDir = 1, step = 0, bodyDy = 0, holdingBox = false, backpack = false } = opts;
   const cx = ox + 32;
   const dir = faceDir;
 
@@ -347,6 +422,17 @@ function drawPetSide(ctx, ox, oy, opts) {
     ctx.fillRect(armX, oy + 34 + bodyDy + off, 4, 10);
     ctx.fillStyle = C.skin;
     ctx.fillRect(armX + 1, oy + 35 + bodyDy + off, 2, 8);
+  }
+
+  // 背包（return 动作：新员工背包到岗）
+  if (backpack) {
+    const bpX = dir > 0 ? cx - 14 : cx + 10;
+    ctx.fillStyle = C.outline;
+    ctx.fillRect(bpX, oy + 32 + bodyDy, 7, 9);
+    ctx.fillStyle = "#7c2d12"; // 棕色背包
+    ctx.fillRect(bpX + 1, oy + 33 + bodyDy, 5, 7);
+    ctx.fillStyle = C.gold;
+    ctx.fillRect(bpX + 2, oy + 35 + bodyDy, 3, 1); // 背包扣
   }
 
   // 脚（前后交替）
@@ -459,31 +545,31 @@ genSideAction(skinDir, "leave", [
   { faceDir: 1, step: 2, holdingBox: true },
 ]);
 genSideAction(skinDir, "return", [
-  { faceDir: 1, step: 0 },
-  { faceDir: 1, step: 1 },
+  { faceDir: 1, step: 0, backpack: true },
+  { faceDir: 1, step: 1, backpack: true },
 ]);
 genAction(skinDir, "promoted", [
-  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true },
-  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, bodyDy: 1 },
-  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true },
+  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, badge: true },
+  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, badge: true, bodyDy: 1 },
+  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, badge: true },
 ]);
 genAction(skinDir, "teambuilding", [
-  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true },
-  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "open", showBlush: true, armRaise: true },
-  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true },
+  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true, cup: true },
+  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "open", showBlush: true, armRaise: true, cup: true },
+  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true, cup: true },
 ]);
 genAction(skinDir, "lunchnap", [
-  { eyeMode: "closed", eyebrowMode: "none", mouthMode: "open", slouch: 6 },
-  { eyeMode: "closed", eyebrowMode: "none", mouthMode: "neutral", slouch: 6, bodyDy: 2 },
+  { eyeMode: "closed", eyebrowMode: "none", mouthMode: "open", slouch: 6, lunchbox: true },
+  { eyeMode: "closed", eyebrowMode: "none", mouthMode: "neutral", slouch: 6, bodyDy: 2, lunchbox: true },
 ]);
 genAction(skinDir, "payday", [
-  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true },
-  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true, bodyDy: -2 },
-  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true },
+  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true, moneyBag: true },
+  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true, moneyBag: true, bodyDy: -2 },
+  { eyeMode: "happy", eyebrowMode: "raised", mouthMode: "smile", showBlush: true, armRaise: true, moneyBag: true },
 ]);
 genAction(skinDir, "vacation", [
-  { eyeMode: "closed", eyebrowMode: "none", mouthMode: "smile", glasses: true, bodyDy: 4 },
-  { eyeMode: "closed", eyebrowMode: "none", mouthMode: "smile", glasses: true, bodyDy: 5 },
+  { eyeMode: "closed", eyebrowMode: "none", mouthMode: "smile", glasses: true, beachChair: true, bodyDy: 4 },
+  { eyeMode: "closed", eyebrowMode: "none", mouthMode: "smile", glasses: true, beachChair: true, bodyDy: 5 },
 ]);
 
 console.log(`\n✅ default 皮肤生成完成（${FW}×${FH}，18 动作）`);

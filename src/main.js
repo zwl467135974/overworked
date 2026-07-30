@@ -96,6 +96,13 @@ const ONE_SHOT_LOOPS = {
   drag: 999, // 持续到 mouseup
   walk: 3,
   jump: 2,
+  // 事件动作多播几轮，让人看清标志性元素
+  payday: 4,
+  teambuilding: 4,
+  promoted: 4,
+  leave: 2,
+  return: 3,
+  happy: 2,
 };
 
 // 一次性动作触发
@@ -671,12 +678,10 @@ listen("team-building", () => {
   endHoldAction();
   triggerOneShot("teambuilding");
 });
-// 升职 → 切 promoted 状态（持续）
+// 升职 → 播 promoted 庆祝动画后回正常（升职是永久的，但不需要一直摆pose）
 listen("promoted", () => {
   endHoldAction();
-  currentState = "promoted";
-  stateFrame = 0;
-  previewUntil = performance.now() + 300000; // 庆祝5分钟
+  triggerOneShot("promoted");
 });
 // 度假 → 切 vacation 状态
 listen("vacation-start", () => {
