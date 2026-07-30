@@ -8,15 +8,17 @@
 //
 // 空闲检测用 GetLastInputInfo（Win32 API，返回系统级最后输入时间）。
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{BehaviorSample, BehaviorSensor};
+use tauri::{AppHandle, Emitter};
 
 /// Windows 行为感知器。
 ///
-/// 在 new() 时启动 rdev 监听线程，回调里只累加原子计数器。
-/// sample_and_reset() 取走并清零，返回 5 秒聚合样本。
+/// rdev 回调里：累加原子计数器（红线 A）+ 节流 emit 打字/点击脉冲（特效用）。
+/// 节流：每 150ms 最多 emit 一次，只传计数不传内容。
 pub struct WindowsSensor {
     key_count: Arc<AtomicU32>,
     mouse_click_count: Arc<AtomicU32>,
@@ -24,18 +26,33 @@ pub struct WindowsSensor {
     last_mouse_pos: Arc<std::sync::Mutex<Option<(f64, f64)>>>,
 }
 
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 impl WindowsSensor {
-    pub fn new() -> Self {
+    pub fn new(app: AppHandle) -> Self {
         let key_count = Arc::new(AtomicU32::new(0));
         let mouse_click_count = Arc::new(AtomicU32::new(0));
         let mouse_move_pixels = Arc::new(AtomicU32::new(0));
         let last_mouse_pos = Arc::new(std::sync::Mutex::new(None::<(f64, f64)>));
 
-        // 启动 rdev 监听线程（全局 hook）
+        // 节流 emit 用的状态
+        let pulse_key_count = Arc::new(AtomicU32::new(0)); // 本周期累计按键数
+        let last_key_emit = Arc::new(AtomicU64::new(0));
+        let last_click_emit = Arc::new(AtomicU64::new(0));
+
         let kc = Arc::clone(&key_count);
         let mc = Arc::clone(&mouse_click_count);
         let mp = Arc::clone(&mouse_move_pixels);
         let lp = Arc::clone(&last_mouse_pos);
+        let pkc = Arc::clone(&pulse_key_count);
+        let lke = Arc::clone(&last_key_emit);
+        let lce = Arc::clone(&last_click_emit);
+        let app_for_thread = app.clone();
 
         std::thread::spawn(move || {
             if let Err(e) = rdev::listen(move |event| {
@@ -43,12 +60,31 @@ impl WindowsSensor {
                     rdev::EventType::KeyPress(_) => {
                         // 红线 A：只计数，不保存哪个键
                         kc.fetch_add(1, Ordering::Relaxed);
+                        pkc.fetch_add(1, Ordering::Relaxed);
+                        // 节流 emit 打字脉冲（150ms）
+                        let now = now_ms();
+                        let last = lke.load(Ordering::Relaxed);
+                        if now - last >= 150 {
+                            lke.store(now, Ordering::Relaxed);
+                            let count = pkc.swap(0, Ordering::Relaxed);
+                            let _ = app_for_thread.emit("typing-pulse", count);
+                        }
                     }
                     rdev::EventType::ButtonPress(_) => {
                         mc.fetch_add(1, Ordering::Relaxed);
+                        // 节流 emit 点击脉冲（100ms），携带当前鼠标坐标
+                        let now = now_ms();
+                        let last = lce.load(Ordering::Relaxed);
+                        if now - last >= 100 {
+                            lce.store(now, Ordering::Relaxed);
+                            // 取最后已知鼠标位置
+                            let pos = lp.lock().ok()
+                                .and_then(|g| *g)
+                                .unwrap_or((0.0, 0.0));
+                            let _ = app_for_thread.emit("click-pulse", pos);
+                        }
                     }
                     rdev::EventType::MouseMove { x, y } => {
-                        // 累加移动距离（曼哈顿距离够用）
                         let dist = if let Ok(mut guard) = lp.lock() {
                             let d = guard.map(|(lx, ly)| {
                                 ((x - lx).abs() + (y - ly).abs()) as u32
@@ -59,7 +95,7 @@ impl WindowsSensor {
                             0
                         };
                         if dist > 0 {
-                            mp.fetch_add(dist.min(1000), Ordering::Relaxed); // 单次上限防溢出
+                            mp.fetch_add(dist.min(1000), Ordering::Relaxed);
                         }
                     }
                     _ => {}
@@ -117,12 +153,6 @@ fn get_idle_seconds() -> u32 {
         } else {
             0
         }
-    }
-}
-
-impl Default for WindowsSensor {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

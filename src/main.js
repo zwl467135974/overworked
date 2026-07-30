@@ -298,12 +298,27 @@ function strollOnGround(startX, groundY, screenW, scaleFactor) {
   walkDir = dir;
   triggerHoldAction("walk");
 
+  let bounces = 0;
+  const maxBounces = 2; // 撞墙最多回弹2次
+
   physicsTimer = setInterval(async () => {
     const step = Math.round(3 * scaleFactor);
     x += dir * step;
     traveled += step;
-    // 边界检测：留足窗口宽度，确保整个窗口不出屏
-    if (x < 0 || x > screenW - winW_phys || traveled > distance) {
+    // 撞墙回弹：到左/右边界反向继续走
+    if (x < 0) {
+      x = 0;
+      dir = 1;
+      walkDir = 1;
+      bounces++;
+    } else if (x > screenW - winW_phys) {
+      x = screenW - winW_phys;
+      dir = -1;
+      walkDir = -1;
+      bounces++;
+    }
+    // 走够距离或撞墙次数到了就停
+    if (traveled > distance || bounces > maxBounces) {
       clearInterval(physicsTimer);
       physicsTimer = null;
       endHoldAction();
@@ -477,8 +492,184 @@ function render(now) {
   ctx.filter = "none";
   ctx.globalAlpha = 1.0;
 
+  // 粒子特效层（画在角色之上）
+  updateAndDrawParticles(now);
+
   requestAnimationFrame(render);
 }
+
+// ===== 粒子系统 =====
+// 统一管理所有特效粒子：dot/symbol/line/ring/shard
+let particles = [];
+
+function spawnParticle(p) {
+  if (particles.length > 30) return; // 上限防性能
+  particles.push({ ...p, born: performance.now() });
+}
+
+// 打字→爆裂粒子（从角色中心向外辐射炸开）
+function fxTypingDots(count) {
+  const n = Math.min(8, 3 + Math.ceil(count));
+  const color = currentState === "tired" ? "#9ca3af" : "#fbbf24";
+  for (let i = 0; i < n; i++) {
+    const angle = (Math.PI * 2 * i) / n + Math.random() * 0.5;
+    const speed = 1.5 + Math.random() * 2;
+    spawnParticle({
+      type: "dot",
+      x: 48,
+      y: 45,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1, // 略向上偏
+      life: 500,
+      color,
+      size: 2 + Math.floor(Math.random() * 2),
+      gravity: 0.08,
+    });
+  }
+}
+
+// 打字→代码符号爆炸（从中心炸出，加大字号）
+const CODE_SYMBOLS = [";", "{", "}", "=>", "</>", "#", "()", "[]", "&&", "++"];
+function fxCodeSymbols(count) {
+  if (count < 3) return;
+  const n = Math.min(3, Math.ceil(count / 2));
+  for (let i = 0; i < n; i++) {
+    const sym = CODE_SYMBOLS[Math.floor(Math.random() * CODE_SYMBOLS.length)];
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1 + Math.random() * 1.5;
+    spawnParticle({
+      type: "symbol",
+      text: sym,
+      x: 48,
+      y: 45,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 0.5,
+      life: 700,
+      color: "#60a5fa",
+      gravity: 0.06,
+    });
+  }
+}
+
+// 快速打字→冲击波（从中心扩散的大圆环 + 速度线）
+function fxSpeedLines(count) {
+  if (count < 5) return;
+  // 冲击波圆环
+  spawnParticle({
+    type: "ring",
+    x: 48,
+    y: 48,
+    radius: 6,
+    vrad: 1.5,
+    life: 350,
+    color: "#fbbf24",
+    lineWidth: 2,
+  });
+  // 速度线
+  for (let i = 0; i < 4; i++) {
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    spawnParticle({
+      type: "line",
+      x: 48,
+      y: 30 + Math.random() * 30,
+      vx: dir * (3 + Math.random() * 2),
+      vy: 0,
+      life: 250,
+      color: "#fbbf24",
+      len: 10,
+    });
+  }
+}
+
+// 点击→波纹
+function fxClickRipple() {
+  spawnParticle({
+    type: "ring",
+    x: 48,
+    y: 48,
+    radius: 4,
+    life: 400,
+    color: "#22d3ee",
+  });
+}
+
+// 体力消耗→碎粒
+function fxStaminaShard() {
+  for (let i = 0; i < 2; i++) {
+    spawnParticle({
+      type: "shard",
+      x: 60 + Math.random() * 10,
+      y: 8,
+      vx: (Math.random() - 0.5) * 2,
+      vy: 1 + Math.random(),
+      life: 500,
+      color: "#ef4444",
+      size: 2,
+    });
+  }
+}
+
+function updateAndDrawParticles(now) {
+  const alive = [];
+  for (const p of particles) {
+    const age = now - p.born;
+    if (age >= p.life) continue;
+    const t = age / p.life;
+    const alpha = 1 - t;
+
+    // 更新位置
+    if (p.vx !== undefined) p.x += p.vx;
+    if (p.vy !== undefined) {
+      p.y += p.vy;
+      if (p.gravity) p.vy += p.gravity; // 通用重力
+    }
+    if (p.type === "ring") p.radius += p.vrad || 0.8;
+
+    ctx.globalAlpha = alpha;
+
+    switch (p.type) {
+      case "dot":
+        ctx.fillStyle = p.color;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+        break;
+      case "symbol":
+        ctx.fillStyle = p.color;
+        ctx.font = "bold 10px monospace";
+        ctx.fillText(p.text, Math.round(p.x), Math.round(p.y));
+        break;
+      case "line":
+        ctx.fillStyle = p.color;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.len, 2);
+        break;
+      case "ring":
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = p.lineWidth || 1.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      case "shard":
+        ctx.fillStyle = p.color;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+        break;
+    }
+    alive.push(p);
+  }
+  particles = alive;
+  ctx.globalAlpha = 1.0;
+}
+
+// ===== 监听脉冲事件 → 触发特效 =====
+listen("typing-pulse", (event) => {
+  const count = event.payload || 1;
+  fxTypingDots(count);
+  fxCodeSymbols(count);
+  fxSpeedLines(count);
+});
+
+listen("click-pulse", () => {
+  fxClickRipple();
+});
 
 function computeBounce(kind, t) {
   switch (kind) {
@@ -718,30 +909,41 @@ listen("return-from-leave", () => {
 });
 
 // 数值细条更新（红线2 调整后：四属性对前端可见）
+// 用 lerp 平滑过渡：5秒tick给目标值，每帧插值靠近，视觉实时扣血
 const barStamina = document.getElementById("bar-stamina");
 const barMood = document.getElementById("bar-mood");
 const numSavings = document.getElementById("num-savings");
 const numWage = document.getElementById("num-wage");
 const floatGain = document.getElementById("float-gain");
 let lastSavings = 0;
+let lastStamina = 100;
 let gainTimer = null;
+
+// 平滑显示值（每帧 lerp 靠近目标值）
+let displayStamina = 80;
+let displayMood = 70;
+let targetStamina = 80;
+let targetMood = 70;
 
 listen("stats-update", (event) => {
   const s = event.payload;
-  if (barStamina) {
-    barStamina.style.width = `${Math.max(0, Math.min(100, s.stamina))}%`;
-    barStamina.classList.toggle("low", s.stamina < 30);
-  }
-  if (barMood) {
-    barMood.style.width = `${Math.max(0, Math.min(100, s.mood))}%`;
-    barMood.classList.toggle("low", s.mood < 30);
-  }
+  targetStamina = Math.max(0, Math.min(100, s.stamina));
+  targetMood = Math.max(0, Math.min(100, s.mood));
   if (numWage) numWage.textContent = s.hourly_wage.toFixed(0);
 
-  // 存款增加特效：检测增量，飘 "+N"
+  // 存款增加特效
   const newSavings = Math.floor(s.savings);
   if (numSavings) numSavings.textContent = newSavings;
   const gain = newSavings - lastSavings;
+  // 体力消耗特效
+  if (s.stamina < lastStamina - 0.5) {
+    fxStaminaShard();
+    if (barStamina) {
+      barStamina.classList.add("draining");
+      setTimeout(() => barStamina.classList.remove("draining"), 300);
+    }
+  }
+  lastStamina = s.stamina;
   if (gain > 0 && floatGain) {
     floatGain.textContent = `+${gain}`;
     floatGain.classList.remove("show");
@@ -754,6 +956,23 @@ listen("stats-update", (event) => {
   }
   lastSavings = newSavings;
 });
+
+// 每帧 lerp 平滑更新血条（视觉实时扣血/回血）
+function updateSmoothBars() {
+  // lerp 因子 0.08：约 1 秒内追上目标值，看起来连续
+  displayStamina += (targetStamina - displayStamina) * 0.08;
+  displayMood += (targetMood - displayMood) * 0.08;
+  if (barStamina) {
+    barStamina.style.width = `${displayStamina}%`;
+    barStamina.classList.toggle("low", displayStamina < 30);
+  }
+  if (barMood) {
+    barMood.style.width = `${displayMood}%`;
+    barMood.classList.toggle("low", displayMood < 30);
+  }
+  requestAnimationFrame(updateSmoothBars);
+}
+requestAnimationFrame(updateSmoothBars);
 
 // ===== 启动（顶层 await，target=esnext 支持） =====
 await loadSkin("default");

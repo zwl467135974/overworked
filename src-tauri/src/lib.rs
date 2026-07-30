@@ -29,6 +29,7 @@ use skin::scan_all_skins;
 use tauri::async_runtime;
 use tauri::menu::{ContextMenu, MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
+use tauri::tray::TrayIconBuilder;
 use tokio::time::sleep;
 
 /// 采样周期：5 秒（见 overworked_behavior_sensing 的低频聚合原则）。
@@ -83,6 +84,25 @@ fn hide_for_one_hour(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Res
     Ok(())
 }
 
+/// 切换特效开关。
+#[tauri::command]
+fn toggle_fx(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> bool {
+    let new_enabled = if let Ok(mut save) = state.save.lock() {
+        let mut ev = save.load_events();
+        ev.fx_enabled = !ev.fx_enabled;
+        let en = ev.fx_enabled;
+        let _ = save.save_events(&ev);
+        en
+    } else {
+        return false;
+    };
+    // show/hide fx-overlay 窗口
+    if let Some(fx_win) = app.get_webview_window("fx-overlay") {
+        let _ = if new_enabled { fx_win.show() } else { fx_win.hide() };
+    }
+    new_enabled
+}
+
 /// 打工日报：返回格式化统计文本（用冒泡展示，不做复杂UI）。
 #[tauri::command]
 fn get_work_report(state: tauri::State<'_, AppState>) -> String {
@@ -134,6 +154,7 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
     let hide_1h = MenuItem::with_id(app, "hide_1h", "暂时消失 1 小时", true, None::<&str>)?;
     let fall = MenuItem::with_id(app, "fall", "掉下去", true, None::<&str>)?;
     let report = MenuItem::with_id(app, "report", "打工日报", true, None::<&str>)?;
+    let fx_toggle = MenuItem::with_id(app, "fx_toggle", "特效开关", true, None::<&str>)?;
     let about = MenuItem::with_id(app, "about", "关于", true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, None)?;
     let sep = PredefinedMenuItem::separator(app)?;
@@ -153,6 +174,7 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
         .item(&hide_1h)
         .item(&fall)
         .item(&report)
+        .item(&fx_toggle)
         .item(&sep)
         .item(&skins_item);
 
@@ -269,12 +291,31 @@ pub fn run() {
                 }
             }
 
+            // ===== fx-overlay 配置（在 manage 之前，save_store 还没 move）=====
+            if let Some(fx_win) = app.get_webview_window("fx-overlay") {
+                let _ = fx_win.set_ignore_cursor_events(true);
+                if !save_store.load_events().fx_enabled {
+                    let _ = fx_win.hide();
+                }
+            }
+
             // 注册 AppState（含存档）
             app.manage(AppState {
-                sensor: Mutex::new(PlatformSensor::new()),
+                sensor: Mutex::new(PlatformSensor::new(app.handle().clone())),
                 state: Mutex::new(pet_state),
                 save: Mutex::new(save_store),
             });
+
+            // ===== 系统托盘（红线3：不占任务栏，但用户能找到）=====
+            let tray_menu = state_menu(app.handle(), false).unwrap_or_else(|_| {
+                MenuBuilder::new(app).build().unwrap()
+            });
+            let _ = TrayIconBuilder::with_id("main-tray")
+                .icon(app.default_window_icon().cloned().unwrap())
+                .tooltip("Overworked — 它替你打工")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .build(app);
 
             // 触发连续天数更新 + 成就检查
             if let Some(s) = app.try_state::<AppState>() {
@@ -353,6 +394,17 @@ pub fn run() {
                     // 3. 推送
                     let _ = app_handle.emit("expression-changed", expression.to_payload());
                     let _ = app_handle.emit("stats-update", stats);
+                    // 周期 emit 桌宠位置给 fx-overlay（逻辑坐标，fx-overlay 自己转物理坐标）
+                    if let Some(main_win) = app_handle.get_webview_window("main") {
+                        if let Ok(pos) = main_win.outer_position() {
+                            if let Ok(scale) = main_win.scale_factor() {
+                                let _ = app_handle.emit(
+                                    "pet-position",
+                                    (pos.x as f64 / scale + 80.0, pos.y as f64 / scale + 100.0),
+                                );
+                            }
+                        }
+                    }
 
                     // 3b. 处理事件
                     for ev in &events {
@@ -463,6 +515,22 @@ pub fn run() {
                     "fall" => {
                         let _ = app_handle.emit("menu/fall", ());
                     }
+                    "fx_toggle" => {
+                        // 切换特效开关
+                        let state = app_handle.state::<AppState>();
+                        let enabled = if let Ok(mut save) = state.save.lock() {
+                            let mut ev = save.load_events();
+                            ev.fx_enabled = !ev.fx_enabled;
+                            let en = ev.fx_enabled;
+                            let _ = save.save_events(&ev);
+                            en
+                        } else { false };
+                        if let Some(fx_win) = app_handle.get_webview_window("fx-overlay") {
+                            let _ = if enabled { fx_win.show() } else { fx_win.hide() };
+                        }
+                        let msg = if enabled { "特效已开启" } else { "特效已关闭" };
+                        let _ = app_handle.emit("bubble-show", msg);
+                    }
                     "report" => {
                         // 打工日报：读统计后冒泡展示
                         let state = app_handle.state::<AppState>();
@@ -473,8 +541,8 @@ pub fn run() {
                             let idle_h = stats.total_idle_seconds / 3600;
                             let idle_m = (stats.total_idle_seconds % 3600) / 60;
                             format!(
-                                "打工日报：连续{}天 | 打工{}h{}m 摸鱼{}h{}m | 按键{}次",
-                                stats.streak_days, work_h, work_m, idle_h, idle_m, stats.total_keys
+                                "连续{}天·打工{}h·按键{}",
+                                stats.streak_days, work_h, stats.total_keys
                             )
                         }).unwrap_or_else(|_| "打工日报读取失败".to_string());
                         let _ = app_handle.emit("bubble-show", text);
@@ -540,6 +608,7 @@ pub fn run() {
             hide_for_one_hour,
             save_window_pos,
             get_work_report,
+            toggle_fx,
             skin::list_skins,
             skin::read_skin_frame,
             skin::switch_skin

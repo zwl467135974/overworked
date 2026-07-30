@@ -41,14 +41,15 @@ pub struct Stats {
 /// 事件追踪状态（Phase 3 特殊事件用）
 #[derive(Debug, Clone, Default)]
 pub struct EventState {
-    pub last_payday_month: i64,       // 上次发工资的月份（防同月重复）
-    pub last_teambuilding_day: String, // 上次团建日期（每周五1次）
-    pub has_promoted: bool,            // 是否已升职
-    pub mood_zero_days: i64,           // 连续心情归零天数（离职判断）
-    pub last_mood_day: String,         // 上次检查心情的日期
-    pub vacation_until: i64,           // 度假结束时间戳（0=没度假）
-    pub leave_until: i64,              // 离职回归时间戳（0=没离职）
-    pub pet_variant: i64,              // 角色变体（离职回归后微变）
+    pub last_payday_month: i64,
+    pub last_teambuilding_day: String,
+    pub has_promoted: bool,
+    pub mood_zero_days: i64,
+    pub last_mood_day: String,
+    pub vacation_until: i64,
+    pub leave_until: i64,
+    pub pet_variant: i64,
+    pub fx_enabled: bool,              // 特效开关（默认 true）
 }
 
 /// 存档存储器。持 SQLite 连接，所有操作同步（SQLite 够快，无需异步）。
@@ -98,7 +99,8 @@ impl SaveStore {
                 last_mood_day TEXT,
                 vacation_until INTEGER DEFAULT 0,
                 leave_until INTEGER DEFAULT 0,
-                pet_variant INTEGER DEFAULT 0
+                pet_variant INTEGER DEFAULT 0,
+                fx_enabled INTEGER DEFAULT 1
             );
             INSERT OR IGNORE INTO stats (id) VALUES (1);
             INSERT OR IGNORE INTO events (id) VALUES (1);",
@@ -234,27 +236,21 @@ impl SaveStore {
 
     /// 读取事件追踪状态。
     pub fn load_events(&self) -> EventState {
-        let row: rusqlite::Result<(i64, Option<String>, i64, i64, Option<String>, i64, i64, i64)> =
+        let row: rusqlite::Result<(i64, Option<String>, i64, i64, Option<String>, i64, i64, i64, i64)> =
             self.conn.query_row(
                 "SELECT last_payday_month, last_teambuilding_day, has_promoted,
-                        mood_zero_days, last_mood_day, vacation_until, leave_until, pet_variant
+                        mood_zero_days, last_mood_day, vacation_until, leave_until, pet_variant, fx_enabled
                  FROM events WHERE id = 1",
                 [],
                 |r| {
                     Ok((
-                        r.get(0)?,
-                        r.get(1)?,
-                        r.get(2)?,
-                        r.get(3)?,
-                        r.get(4)?,
-                        r.get(5)?,
-                        r.get(6)?,
-                        r.get(7)?,
+                        r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?,
+                        r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?,
                     ))
                 },
             );
         match row {
-            Ok((pm, tb, hp, mzd, lmd, vu, lu, pv)) => EventState {
+            Ok((pm, tb, hp, mzd, lmd, vu, lu, pv, fx)) => EventState {
                 last_payday_month: pm,
                 last_teambuilding_day: tb.unwrap_or_default(),
                 has_promoted: hp != 0,
@@ -263,6 +259,7 @@ impl SaveStore {
                 vacation_until: vu,
                 leave_until: lu,
                 pet_variant: pv,
+                fx_enabled: fx != 0,
             },
             Err(_) => EventState::default(),
         }
@@ -279,7 +276,8 @@ impl SaveStore {
                 last_mood_day = ?5,
                 vacation_until = ?6,
                 leave_until = ?7,
-                pet_variant = ?8
+                pet_variant = ?8,
+                fx_enabled = ?9
              WHERE id = 1",
             params![
                 ev.last_payday_month,
@@ -290,6 +288,7 @@ impl SaveStore {
                 ev.vacation_until,
                 ev.leave_until,
                 ev.pet_variant,
+                ev.fx_enabled as i64,
             ],
         )?;
         Ok(())

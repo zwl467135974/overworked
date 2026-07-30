@@ -25,6 +25,20 @@
         "focus": false,
         "skipTaskbar": true,
         "visible": true
+      },
+      {
+        "label": "fx-overlay",
+        "title": "Overworked FX",
+        "url": "fx.html",
+        "fullscreen": true,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "shadow": false,
+        "focus": false,
+        "skipTaskbar": true,
+        "visible": true
       }
     ],
     "security": {

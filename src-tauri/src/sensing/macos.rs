@@ -26,7 +26,7 @@ pub struct MacSensor {
 }
 
 impl MacSensor {
-    pub fn new() -> Self {
+    pub fn new(_app: tauri::AppHandle) -> Self {
         let key_count = Arc::new(AtomicU32::new(0));
         let mouse_click_count = Arc::new(AtomicU32::new(0));
         let mouse_move_pixels = Arc::new(AtomicU32::new(0));

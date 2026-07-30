@@ -20,16 +20,10 @@ pub struct StubSensor {
 }
 
 impl StubSensor {
-    pub fn new() -> Self {
+    pub fn new(_app: tauri::AppHandle) -> Self {
         Self {
             start: Instant::now(),
         }
-    }
-}
-
-impl Default for StubSensor {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
