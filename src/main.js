@@ -492,7 +492,7 @@ function render(now) {
   ctx.filter = "none";
   ctx.globalAlpha = 1.0;
 
-  // 粒子特效层（画在角色之上）
+  // 粒子特效层（仅体力碎粒，其他特效交给 fx-overlay 全屏窗口）
   updateAndDrawParticles(now);
 
   requestAnimationFrame(render);
@@ -684,19 +684,12 @@ function updateAndDrawParticles(now) {
   ctx.globalCompositeOperation = prevComp;
 }
 
-// ===== 监听脉冲事件 → 触发特效 =====
-listen("typing-pulse", (event) => {
-  if (!fxEnabled) return;
-  const count = event.payload || 1;
-  fxTypingDots(count);
-  fxCodeSymbols(count);
-  fxSpeedLines(count);
-});
+// ===== 监听脉冲事件 =====
+// typing/click 特效交给 fx-overlay 全屏窗口处理，main.js 不重复生成
+// （避免双倍粒子导致性能问题）
+listen("typing-pulse", () => {});
 
-listen("click-pulse", () => {
-  // 桌宠身上画波纹（无全屏窗口，点击位置不可知）
-  if (fxEnabled) fxClickRipple();
-});
+listen("click-pulse", () => {});
 
 // 特效开关
 let fxEnabled = true;

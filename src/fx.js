@@ -39,14 +39,15 @@ let shakeAmp = 0;
 let flashAlpha = 0;
 
 function spawnDot(x, y, vx, vy, color, size, life, gravity) {
-  if (particles.length > 120) return;
-  particles.push({ type: "dot", x, y, vx, vy, color, size: size || 3, life: life || 450, gravity: gravity || 0.1, born: performance.now() });
+  if (particles.length > 60) return;
+  particles.push({ type: "dot", x, y, vx, vy, color, size: size || 3, life: life || 350, gravity: gravity || 0.1, born: performance.now() });
 }
 function spawnRing(x, y, color, vrad, life, lineWidth) {
-  particles.push({ type: "ring", x, y, radius: 6, vrad: vrad || 2.5, color, life: life || 380, lineWidth: lineWidth || 4, born: performance.now() });
+  if (particles.length > 60) return;
+  particles.push({ type: "ring", x, y, radius: 6, vrad: vrad || 2.5, color, life: life || 300, lineWidth: lineWidth || 4, born: performance.now() });
 }
 function spawnSymbol(text, x, y, vx, vy, color) {
-  if (symbols.length > 15) return;
+  if (symbols.length > 8) return;
   symbols.push({ text, x, y, vx, vy, color, life: 700, gravity: 0.08, born: performance.now() });
 }
 
@@ -96,9 +97,9 @@ listen("click-pulse", (event) => {
   // 限制在屏幕范围内
   const safeX = Math.max(0, Math.min(canvas.width, cx));
   const safeY = Math.max(0, Math.min(canvas.height, cy));
-  spawnRing(safeX, safeY, "#22d3ee", 2.5, 500, 4);
-  for (let i = 0; i < 8; i++) {
-    const angle = (Math.PI * 2 * i) / 8;
+  spawnRing(safeX, safeY, "#22d3ee", 2.5, 400, 4);
+  for (let i = 0; i < 5; i++) {
+    const angle = (Math.PI * 2 * i) / 5;
     const speed = 2.5 + Math.random() * 2;
     spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, "#22d3ee", 3, 400, 0.06);
   }
