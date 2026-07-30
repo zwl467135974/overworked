@@ -63,8 +63,15 @@ pub struct SkinInfo {
 
 /// 获取 skins 目录的绝对路径。
 /// dev：项目根/skins（cwd 可能是 src-tauri，需向上找）
-/// prod：打包后的 resource 目录（后续配置）
+/// prod：打包后的 resource 目录/skins
 fn skins_dir(app: &AppHandle) -> Option<PathBuf> {
+    // prod 优先：打包资源目录
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let p = resource_dir.join("skins");
+        if p.is_dir() {
+            return Some(p);
+        }
+    }
     // dev：cwd 可能是项目根或 src-tauri，向上找最多 3 级
     if let Ok(mut cwd) = std::env::current_dir() {
         for _ in 0..3 {

@@ -12,10 +12,14 @@
 pub mod stub;
 #[cfg(windows)]
 pub mod windows;
+#[cfg(target_os = "macos")]
+pub mod macos;
 
 #[cfg(windows)]
 pub use windows::WindowsSensor as PlatformSensor;
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub use macos::MacSensor as PlatformSensor;
+#[cfg(not(any(windows, target_os = "macos")))]
 pub use stub::StubSensor as PlatformSensor;
 #[allow(unused_imports)]
 pub use stub::StubSensor;
