@@ -113,6 +113,8 @@ pub enum TickEvent {
     // 趣味玩法
     BossIncoming,  // Boss来了（摸鱼被抓：长时间挂机后突然疯狂打字）
     CoffeeBoost,   // 投喂咖啡（command 触发，体力恢复）
+    // 修仙：续命丹救命（消耗一颗续命丹，免于过劳送医）
+    LifeSaved,
 }
 
 impl PetState {
@@ -300,10 +302,18 @@ impl PetState {
             events.push(TickEvent::PomodoroComplete);
         }
 
-        // ===== 过劳送医检查 =====
+        // ===== 过劳送医检查（修仙：续命丹可救命）=====
         if self.stamina <= 0.0 {
-            self.hospital_until = Some(now + Duration::from_secs(300));
-            events.push(TickEvent::HospitalAdmit);
+            if ev.cultivation_mode && ev.item_life_pill > 0 {
+                // 续命丹救命：消耗一颗，体力回 50，不进医院
+                ev.item_life_pill -= 1;
+                self.stamina = 50.0;
+                self.mood = (self.mood + 10.0).min(100.0);
+                events.push(TickEvent::LifeSaved);
+            } else {
+                self.hospital_until = Some(now + Duration::from_secs(300));
+                events.push(TickEvent::HospitalAdmit);
+            }
         }
 
         // ===== Phase 3 特殊事件 =====

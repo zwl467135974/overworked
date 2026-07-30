@@ -258,14 +258,25 @@ fn emit_cult_events(app: &tauri::AppHandle, events: &[CultEvent]) {
                 let _ = app.emit("cult-bought", item.clone());
             }
             CultEvent::RealmUp(r) => {
+                // 突破是高光时刻：确保 fx-overlay 可见（即使全局关了特效）
+                if let Some(fx_win) = app.get_webview_window("fx-overlay") {
+                    let _ = fx_win.show();
+                }
                 let _ = app.emit("realm-up", *r);
                 let _ = app.emit("bubble-show", format!("突破！{}", realm_name(*r)));
             }
             CultEvent::Deviation => {
+                if let Some(fx_win) = app.get_webview_window("fx-overlay") {
+                    let _ = fx_win.show();
+                }
                 let _ = app.emit("cult-deviation", ());
                 let _ = app.emit("bubble-show", "走火入魔！");
             }
             CultEvent::Ascension => {
+                // 飞升结局：强制开特效 + 隐藏桌宠本体
+                if let Some(fx_win) = app.get_webview_window("fx-overlay") {
+                    let _ = fx_win.show();
+                }
                 let _ = app.emit("cult-ascension", ());
                 let _ = app.emit("bubble-show", "飞升！！");
             }
@@ -508,6 +519,12 @@ pub fn run() {
                     if cult.cultivation_mode {
                         let _ = app.emit("cultivation-update", cult);
                     }
+                    // 已飞升（境界 6）：桌宠已化光而去，隐藏本体
+                    if cult.cultivation_mode && cult.realm >= 6 {
+                        if let Some(main_win) = app.get_webview_window("main") {
+                            let _ = main_win.hide();
+                        }
+                    }
                 }
             }
 
@@ -690,6 +707,11 @@ pub fn run() {
                             }
                             TickEvent::CoffeeBoost => {
                                 // 由 feed_coffee command 直接处理，tick 不触发
+                            }
+                            TickEvent::LifeSaved => {
+                                // 修仙：续命丹救命，金光护体特效
+                                let _ = app_handle.emit("life-saved", ());
+                                let _ = app_handle.emit("bubble-show", "续命丹救命！");
                             }
                         }
                     }

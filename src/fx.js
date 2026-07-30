@@ -105,6 +105,111 @@ listen("click-pulse", (event) => {
   }
 });
 
+// ===== 修仙特效 =====
+// 突破成功 → 金光爆裂（多层金环 + 金色粒子辐射 + screen shake + 白闪）
+listen("realm-up", () => {
+  const cx = petX;
+  const cy = petY - 30;
+  // 三层金色冲击波（递增半径，错峰扩散）
+  spawnRing(cx, cy, "#ffd700", 3.5, 600, 6);
+  setTimeout(() => spawnRing(cx, cy, "#ffe9a8", 4, 500, 5), 120);
+  setTimeout(() => spawnRing(cx, cy, "#ffffff", 5, 400, 4), 240);
+  // 金色粒子辐射（环形 16 颗 + 随机散射 10 颗）
+  const ringN = 16;
+  for (let i = 0; i < ringN; i++) {
+    const angle = (Math.PI * 2 * i) / ringN;
+    const speed = 4 + Math.random() * 2;
+    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 2, "#ffd700", 4, 700, 0.05);
+  }
+  for (let i = 0; i < 10; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 1.5, "#ffe9a8", 3, 600, 0.08);
+  }
+  // 上升的灵气光点（从角色向上飘）
+  for (let i = 0; i < 8; i++) {
+    const ox = (Math.random() - 0.5) * 40;
+    spawnDot(cx + ox, cy, (Math.random() - 0.5) * 0.5, -3 - Math.random() * 2, "#fff3c4", 3, 900, -0.02);
+  }
+  shakeAmp = 6;
+  flashAlpha = 0.2;
+});
+
+// 走火入魔 → 红黑震荡（暗红冲击波 + 紫黑粒子 + 强烈 shake + 红闪）
+listen("cult-deviation", () => {
+  const cx = petX;
+  const cy = petY - 30;
+  // 暗红 + 紫黑双层冲击波
+  spawnRing(cx, cy, "#dc2626", 3, 500, 6);
+  setTimeout(() => spawnRing(cx, cy, "#7c1d6f", 4, 450, 5), 100);
+  // 暗红粒子（杂乱散射）
+  for (let i = 0; i < 14; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 4;
+    const color = Math.random() < 0.5 ? "#dc2626" : "#991b1b";
+    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 1, color, 3, 550, 0.15);
+  }
+  // 下坠的黑气（走火入魔 = 气沉，与突破的上升相反）
+  for (let i = 0; i < 6; i++) {
+    const ox = (Math.random() - 0.5) * 30;
+    spawnDot(cx + ox, cy, (Math.random() - 0.5) * 1, 2 + Math.random() * 2, "#450a0a", 3, 600, 0.1);
+  }
+  shakeAmp = 10;
+  flashAlpha = 0.15; // 红闪
+});
+
+// 飞升 → 金光大作（持续金柱 + 大量上升金粒 + 多层扩散 + 强白闪）
+listen("cult-ascension", () => {
+  const cx = petX;
+  const cy = petY - 30;
+  // 多层金环（5 层错峰，模拟金光绽放）
+  spawnRing(cx, cy, "#ffd700", 6, 900, 8);
+  for (let i = 1; i <= 4; i++) {
+    setTimeout(() => spawnRing(cx, cy, i % 2 === 0 ? "#ffffff" : "#ffd700", 6 + i, 800 - i * 80, 7 - i), i * 150);
+  }
+  // 大量上升金粒（飞升 = 升天，强烈向上的金光）
+  const ascN = 40;
+  for (let i = 0; i < ascN; i++) {
+    const ox = (Math.random() - 0.5) * 60;
+    const vy = -4 - Math.random() * 4;
+    const vx = (Math.random() - 0.5) * 1.5;
+    const color = Math.random() < 0.6 ? "#ffd700" : (Math.random() < 0.5 ? "#ffffff" : "#fff3c4");
+    spawnDot(cx + ox, cy, vx, vy, color, 3 + Math.random() * 2, 1200 + Math.random() * 600, -0.01);
+  }
+  // 水平辐射金粒
+  for (let i = 0; i < 20; i++) {
+    const angle = (Math.PI * 2 * i) / 20;
+    const speed = 5 + Math.random() * 3;
+    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, "#ffd700", 4, 800, 0.03);
+  }
+  shakeAmp = 12;
+  flashAlpha = 0.35;
+  // 持续 2 秒的金光上升（分批再补一波）
+  setTimeout(() => {
+    for (let i = 0; i < 25; i++) {
+      const ox = (Math.random() - 0.5) * 50;
+      spawnDot(cx + ox, cy + 20, (Math.random() - 0.5) * 1, -5 - Math.random() * 3, "#ffd700", 3, 1200, -0.01);
+    }
+    flashAlpha = Math.max(flashAlpha, 0.15);
+  }, 1500);
+});
+
+// 续命丹救命 → 绿色护盾（环形护盾 + 绿色粒子上升恢复）
+listen("life-saved", () => {
+  const cx = petX;
+  const cy = petY - 30;
+  // 双层绿色护盾环
+  spawnRing(cx, cy, "#34d399", 2.5, 600, 5);
+  setTimeout(() => spawnRing(cx, cy, "#6ee7b7", 3, 500, 4), 120);
+  // 绿色恢复粒子（向上飘，生机感）
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 2;
+    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 2, "#34d399", 3, 600, -0.03);
+  }
+  flashAlpha = 0.1;
+});
+
 // ===== 预渲染发光球（避免每帧 createRadialGradient 的性能开销）=====
 const glowCache = {};
 function getGlow(color, size) {

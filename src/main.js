@@ -417,6 +417,13 @@ listen("drag-ended", async () => {
 });
 
 function render(now) {
+  // 飞升结局：接管渲染（金光+上升+淡出）
+  if (ascensionActive) {
+    renderAscension(now);
+    requestAnimationFrame(render);
+    return;
+  }
+
   // 帧推进
   if (now - lastFrameTime >= FRAME_INTERVAL) {
     lastFrameTime = now;
@@ -1095,11 +1102,97 @@ listen("cult-deviation", () => {
     cultPanel.classList.add("deviation");
   }
 });
-// 飞升结局 → 消失动画（暂用 happy 庆祝，后续加专属特效）
-listen("cult-ascension", () => {
+// 续命丹救命 → poke 反应（缓过一口气）
+listen("life-saved", () => {
   endHoldAction();
-  triggerOneShot("happy");
+  triggerOneShot("poke");
 });
+// 飞升结局 → 桌宠本体发光上升淡出 + 通关字幕
+listen("cult-ascension", () => {
+  startAscensionEnding();
+});
+
+// ===== 飞升结局动画 =====
+// 桌宠本体：金光叠加 → 向上漂浮 → 淡出消失 → 通关字幕
+let ascensionActive = false;
+let ascensionStart = 0;
+
+function startAscensionEnding() {
+  if (ascensionActive) return;
+  ascensionActive = true;
+  ascensionStart = 0;
+  // 冻结状态机，停止随机动作
+  previewUntil = performance.now() + 999999999;
+  endHoldAction();
+  oneShotAction = null;
+
+  // 通关字幕 DOM（覆盖在桌宠窗口上）
+  const overlay = document.createElement("div");
+  overlay.id = "ascension-overlay";
+  overlay.innerHTML = '<div class="asc-text">飞 升</div><div class="asc-sub">它终得道，化光而去</div>';
+  document.body.appendChild(overlay);
+  // 触发重绘后显示
+  requestAnimationFrame(() => overlay.classList.add("show"));
+
+  // 6 秒后移除字幕（桌宠已隐，留个纪念）
+  setTimeout(() => {
+    overlay.classList.remove("show");
+    setTimeout(() => overlay.remove(), 1000);
+  }, 6000);
+}
+
+// 飞升渲染（由 render 主循环在 ascensionActive 时调用）
+function renderAscension(now) {
+  if (!ascensionStart) ascensionStart = now;
+  const elapsed = now - ascensionStart;
+  const PHASE_GLOW = 1500;   // 0-1.5s：金光渐强
+  const PHASE_FLOAT = 4000;  // 1.5-4s：上升淡出
+  const PHASE_DONE = 4200;   // 4.2s：完全消失
+
+  ctx.clearRect(0, 0, 96, 96);
+
+  let opacity = 1;
+  let brightness = 1;
+  let liftY = 0;
+  if (elapsed < PHASE_GLOW) {
+    const t = elapsed / PHASE_GLOW;
+    brightness = 1 + t * 2.5; // 1→3.5
+  } else if (elapsed < PHASE_FLOAT) {
+    const t = (elapsed - PHASE_GLOW) / (PHASE_FLOAT - PHASE_GLOW);
+    brightness = 3.5;
+    opacity = 1 - t; // 淡出
+    liftY = -t * 60;  // 向上飘 60px
+  } else {
+    opacity = 0;
+  }
+
+  const frames = getFrames(currentState);
+  const img = frames.length > 0 ? frames[stateFrame % frames.length] : null;
+  if (img && img.complete && img.naturalWidth > 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, opacity);
+    ctx.filter = `brightness(${brightness}) drop-shadow(0 0 ${8 + brightness * 4}px #ffd700)`;
+    const iw = img.naturalWidth || 64;
+    const ih = img.naturalHeight || 64;
+    const dh = 96;
+    const dw = iw * (dh / ih);
+    ctx.translate(48, 48 + liftY);
+    ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+    ctx.restore();
+  }
+  // 推进帧（让动作继续播）
+  if (now - lastFrameTime >= FRAME_INTERVAL) {
+    lastFrameTime = now;
+    stateFrame = (stateFrame + 1) % Math.max(1, frames.length);
+  }
+
+  if (elapsed >= PHASE_DONE) {
+    // 完全消失：隐藏窗口（桌宠已飞升）
+    ascensionActive = false;
+    ascensionStart = 0;
+    win.hide().catch(() => {});
+  }
+}
 
 // ===== 启动（顶层 await，target=esnext 支持） =====
 await loadSkin("default");

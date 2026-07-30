@@ -203,6 +203,49 @@ body {
   animation: deviationShake 0.4s ease 3;
 }
 
+/* ===== 飞升结局字幕 ===== */
+#ascension-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1s ease;
+}
+
+#ascension-overlay.show {
+  opacity: 1;
+}
+
+.asc-text {
+  font-size: 28px;
+  font-weight: bold;
+  letter-spacing: 12px;
+  color: #ffd700;
+  text-shadow:
+    0 0 8px rgba(255, 215, 0, 0.8),
+    0 0 16px rgba(255, 215, 0, 0.5),
+    0 0 24px rgba(255, 215, 0, 0.3);
+  animation: ascPulse 2s ease-in-out infinite;
+}
+
+.asc-sub {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #fff3c4;
+  text-shadow: 0 0 4px rgba(255, 215, 0, 0.6);
+  letter-spacing: 2px;
+}
+
+@keyframes ascPulse {
+  0%, 100% { text-shadow: 0 0 8px rgba(255, 215, 0, 0.8), 0 0 16px rgba(255, 215, 0, 0.5); }
+  50% { text-shadow: 0 0 12px rgba(255, 215, 0, 1), 0 0 24px rgba(255, 215, 0, 0.7), 0 0 36px rgba(255, 215, 0, 0.4); }
+}
+
 /* ===== 冒泡（红线 1：只反应不教育；红线 3：3 秒消失不打断） ===== */
 /* 冒泡定位在角色正上方（窗口的上半透明区） */
 #bubble {
