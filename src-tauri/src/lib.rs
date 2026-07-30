@@ -433,11 +433,12 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
         let cult_milestone = MenuItem::with_id(app, "cult:mavings_milestone", "触发存500彩蛋", true, None::<&str>)?;
         let cult_on = MenuItem::with_id(app, "cult:on", "开启修仙模式", true, None::<&str>)?;
         let cult_off = MenuItem::with_id(app, "cult:off", "关闭修仙模式", true, None::<&str>)?;
+        let cult_revive = MenuItem::with_id(app, "cult:revive", "复活（飞升后恢复）", true, None::<&str>)?;
         let sep_cult = PredefinedMenuItem::separator(app)?;
         let realm_label = MenuItem::with_id(app, "realm_label", "— 设境界（验证光环）—", false, None::<&str>)?;
         cult_submenu = cult_submenu
             .item(&cult_label)
-            .item(&cult_milestone).item(&cult_on).item(&cult_off)
+            .item(&cult_milestone).item(&cult_on).item(&cult_off).item(&cult_revive)
             .item(&sep_cult).item(&realm_label);
         let realm_names = ["凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升"];
         for (i, name) in realm_names.iter().enumerate() {
@@ -1002,6 +1003,22 @@ pub fn run() {
                         }
                         let _ = app_handle.emit("cultivation-off", ());
                         let _ = app_handle.emit("bubble-show", "（调试）切回普通模式");
+                        push_stats_and_cult(&app_handle, &state);
+                    }
+                    "cult:revive" => {
+                        // 调试：复活（飞升后恢复桌宠）
+                        let state = app_handle.state::<AppState>();
+                        {
+                            let mut save = state.save.lock().unwrap();
+                            let mut ev = save.load_events();
+                            ev.cultivation_mode = true;
+                            ev.cultivation_realm = 3; // 回到金丹期
+                            ev.cultivation_exp = 50.0;
+                            let _ = save.save_events(&ev);
+                        }
+                        // 通知前端复活（退出飞升动画 + 显示窗口）
+                        let _ = app_handle.emit("debug-revive", ());
+                        let _ = app_handle.emit("bubble-show", "（调试）复活了！");
                         push_stats_and_cult(&app_handle, &state);
                     }
                     _ if id.starts_with("cult:realm:") => {

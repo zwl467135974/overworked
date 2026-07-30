@@ -425,83 +425,173 @@ function drawRealmAura(now) {
   if (!cultMode || cultRealm < 1) return;
   const t = now / 1000; // 秒
 
-  // 练气(1)+：周身青色微光（加法混合的柔和光晕）
+  // ===== 练气(1)+：青色灵气 —— 绕体旋转的气点 + 柔光晕 =====
   if (cultRealm >= 1) {
     ctx.globalCompositeOperation = "lighter";
-    const breath = 0.6 + Math.sin(t * 2) * 0.15; // 呼吸
-    const r = 42;
-    const g = ctx.createRadialGradient(0, 0, 10, 0, 0, r);
-    g.addColorStop(0, `rgba(120, 230, 200, ${0.18 * breath})`);
-    g.addColorStop(0.6, `rgba(80, 200, 170, ${0.08 * breath})`);
-    g.addColorStop(1, "rgba(80, 200, 170, 0)");
+    // 底层柔光晕（呼吸）
+    const breath = 0.7 + Math.sin(t * 2) * 0.2;
+    const r = 44;
+    const g = ctx.createRadialGradient(0, 0, 8, 0, 0, r);
+    g.addColorStop(0, `rgba(100, 230, 200, ${0.22 * breath})`);
+    g.addColorStop(0.5, `rgba(60, 200, 170, ${0.1 * breath})`);
+    g.addColorStop(1, "rgba(60, 200, 170, 0)");
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
+    // 3 颗气点绕体旋转（明显可见的粒子）
+    for (let i = 0; i < 3; i++) {
+      const angle = t * 1.5 + (i * Math.PI * 2) / 3;
+      const px = Math.cos(angle) * 30;
+      const py = Math.sin(angle) * 30 - 2;
+      const pg = ctx.createRadialGradient(px, py, 0, px, py, 6);
+      pg.addColorStop(0, "rgba(150, 255, 220, 0.9)");
+      pg.addColorStop(0.5, "rgba(80, 230, 190, 0.5)");
+      pg.addColorStop(1, "rgba(80, 230, 190, 0)");
+      ctx.fillStyle = pg;
+      ctx.beginPath();
+      ctx.arc(px, py, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.globalCompositeOperation = "source-over";
   }
 
-  // 筑基(2)+：灵体半透明（本体已画，这里再罩一层淡蓝降低不透明感）
+  // ===== 筑基(2)+：灵体化 —— 蓝白光体 + 漂浮灵魂碎片 =====
   if (cultRealm >= 2) {
     ctx.globalCompositeOperation = "lighter";
-    ctx.fillStyle = "rgba(150, 220, 255, 0.06)";
+    // 蓝白光体罩（比练气更亮、偏蓝）
+    const breath = 0.8 + Math.sin(t * 1.8) * 0.15;
+    const g = ctx.createRadialGradient(0, 2, 5, 0, 2, 38);
+    g.addColorStop(0, `rgba(180, 230, 255, ${0.2 * breath})`);
+    g.addColorStop(0.5, `rgba(120, 200, 255, ${0.1 * breath})`);
+    g.addColorStop(1, "rgba(120, 200, 255, 0)");
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(0, 4, 36, 0, Math.PI * 2);
+    ctx.arc(0, 2, 38, 0, Math.PI * 2);
     ctx.fill();
+    // 4 片漂浮灵魂碎片（上下缓慢飘动的小光块）
+    for (let i = 0; i < 4; i++) {
+      const baseAngle = (i * Math.PI * 2) / 4 + t * 0.4;
+      const dist = 26 + Math.sin(t * 1.2 + i) * 4;
+      const px = Math.cos(baseAngle) * dist;
+      const py = Math.sin(baseAngle) * dist * 0.7 - 4;
+      ctx.fillStyle = `rgba(200, 240, 255, ${0.6 + Math.sin(t * 2 + i) * 0.2})`;
+      ctx.beginPath();
+      ctx.arc(px, py, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.globalCompositeOperation = "source-over";
   }
 
-  // 金丹(3)+：胸口金丹（旋转的小金球 + 光晕）
+  // ===== 金丹(3)+：胸口金丹 —— 大金球 + 旋转轨道粒子 =====
   if (cultRealm >= 3) {
     ctx.globalCompositeOperation = "lighter";
     const danX = 0;
-    const danY = 6; // 胸口位置（原点下方）
-    // 金光晕
-    const g = ctx.createRadialGradient(danX, danY, 0, danX, danY, 12);
-    g.addColorStop(0, "rgba(255, 215, 0, 0.9)");
-    g.addColorStop(0.5, "rgba(255, 180, 0, 0.4)");
+    const danY = 8; // 胸口
+    // 金丹大光晕（脉冲）
+    const pulse = 1 + Math.sin(t * 4) * 0.15;
+    const gr = 16 * pulse;
+    const g = ctx.createRadialGradient(danX, danY, 0, danX, danY, gr);
+    g.addColorStop(0, "rgba(255, 240, 150, 1)");
+    g.addColorStop(0.3, "rgba(255, 215, 0, 0.8)");
+    g.addColorStop(0.7, "rgba(255, 160, 0, 0.3)");
+    g.addColorStop(1, "rgba(255, 160, 0, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(danX, danY, gr, 0, Math.PI * 2);
+    ctx.fill();
+    // 金丹核心（实心亮黄球）
+    ctx.fillStyle = "rgba(255, 250, 200, 0.95)";
+    ctx.beginPath();
+    ctx.arc(danX, danY, 4, 0, Math.PI * 2);
+    ctx.fill();
+    // 3 颗轨道粒子环绕金丹
+    for (let i = 0; i < 3; i++) {
+      const angle = t * 4 + (i * Math.PI * 2) / 3;
+      const ox = Math.cos(angle) * 14;
+      const oy = Math.sin(angle) * 14 * 0.6 + danY * 0.3;
+      const og = ctx.createRadialGradient(danX + ox, danY + oy, 0, danX + ox, danY + oy, 5);
+      og.addColorStop(0, "rgba(255, 240, 180, 0.8)");
+      og.addColorStop(1, "rgba(255, 200, 0, 0)");
+      ctx.fillStyle = og;
+      ctx.beginPath();
+      ctx.arc(danX + ox, danY + oy, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // ===== 元婴(4)+：头顶双层光环 + 元婴小分身 =====
+  if (cultRealm >= 4) {
+    ctx.globalCompositeOperation = "lighter";
+    const haloY = -34;
+    const breath = 1 + Math.sin(t * 2.5) * 0.1;
+    // 外层光环（大、亮、发光）
+    ctx.strokeStyle = "rgba(255, 215, 0, 0.9)";
+    ctx.lineWidth = 3;
+    ctx.shadowColor = "#ffd700";
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.ellipse(0, haloY, 16 * breath, 6 * breath, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // 内层光环（小、更亮）
+    ctx.strokeStyle = "rgba(255, 250, 200, 0.6)";
+    ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.ellipse(0, haloY, 11 * breath, 4 * breath, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // 元婴小分身：头顶上方漂浮的迷你光人（一个发光小点 + 拖尾）
+    const babyY = haloY - 8 + Math.sin(t * 3) * 2;
+    const bg = ctx.createRadialGradient(0, babyY, 0, 0, babyY, 8);
+    bg.addColorStop(0, "rgba(255, 255, 220, 0.9)");
+    bg.addColorStop(0.5, "rgba(255, 230, 150, 0.4)");
+    bg.addColorStop(1, "rgba(255, 230, 150, 0)");
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.arc(0, babyY, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // ===== 化神(5)+：全身金光 + 环绕光粒 + 强悬浮 =====
+  if (cultRealm >= 5) {
+    ctx.globalCompositeOperation = "lighter";
+    // 全身强金光晕（大范围、高亮度、呼吸）
+    const breath = 0.85 + Math.sin(t * 1.5) * 0.15;
+    const r = 52;
+    const g = ctx.createRadialGradient(0, 0, 10, 0, 0, r);
+    g.addColorStop(0, `rgba(255, 240, 150, ${0.35 * breath})`);
+    g.addColorStop(0.4, `rgba(255, 210, 60, ${0.18 * breath})`);
+    g.addColorStop(0.7, `rgba(255, 180, 0, ${0.08 * breath})`);
     g.addColorStop(1, "rgba(255, 180, 0, 0)");
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(danX, danY, 12, 0, Math.PI * 2);
-    ctx.fill();
-    // 金丹本体（旋转的高光点）
-    const spin = t * 3;
-    ctx.fillStyle = "#fff3c4";
-    ctx.beginPath();
-    ctx.arc(danX + Math.cos(spin) * 2, danY + Math.sin(spin) * 2, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalCompositeOperation = "source-over";
-  }
-
-  // 元婴(4)+：头顶光环（金色环 + 呼吸缩放）
-  if (cultRealm >= 4) {
-    ctx.globalCompositeOperation = "lighter";
-    const haloY = -32; // 头顶（原点上方）
-    const breath = 1 + Math.sin(t * 2.5) * 0.08;
-    ctx.strokeStyle = "rgba(255, 215, 0, 0.85)";
-    ctx.lineWidth = 2.5;
-    ctx.shadowColor = "#ffd700";
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-    ctx.ellipse(0, haloY, 14 * breath, 5 * breath, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.globalCompositeOperation = "source-over";
-  }
-
-  // 化神(5)：全身金光（强光晕 + 悬浮微动由 bounce 表达，这里加金光）
-  if (cultRealm >= 5) {
-    ctx.globalCompositeOperation = "lighter";
-    const breath = 0.7 + Math.sin(t * 1.5) * 0.2;
-    const r = 50;
-    const g = ctx.createRadialGradient(0, 0, 15, 0, 0, r);
-    g.addColorStop(0, `rgba(255, 230, 120, ${0.25 * breath})`);
-    g.addColorStop(0.5, `rgba(255, 200, 50, ${0.12 * breath})`);
-    g.addColorStop(1, "rgba(255, 200, 50, 0)");
-    ctx.fillStyle = g;
-    ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    // 6 颗环绕光粒（椭圆轨道）
+    for (let i = 0; i < 6; i++) {
+      const angle = t * 1.2 + (i * Math.PI * 2) / 6;
+      const px = Math.cos(angle) * 40;
+      const py = Math.sin(angle) * 40 * 0.5; // 椭圆轨道
+      const pg = ctx.createRadialGradient(px, py, 0, px, py, 7);
+      pg.addColorStop(0, "rgba(255, 250, 200, 0.9)");
+      pg.addColorStop(0.5, "rgba(255, 220, 80, 0.4)");
+      pg.addColorStop(1, "rgba(255, 220, 80, 0)");
+      ctx.fillStyle = pg;
+      ctx.beginPath();
+      ctx.arc(px, py, 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 底部光台（悬浮感：脚下有个发光圆台）
+    const baseY = 40;
+    const baseG = ctx.createRadialGradient(0, baseY, 0, 0, baseY, 24);
+    baseG.addColorStop(0, "rgba(255, 230, 120, 0.4)");
+    baseG.addColorStop(1, "rgba(255, 200, 50, 0)");
+    ctx.fillStyle = baseG;
+    ctx.beginPath();
+    ctx.ellipse(0, baseY, 24, 7, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalCompositeOperation = "source-over";
   }
@@ -1209,6 +1299,19 @@ listen("life-saved", () => {
 // 飞升结局 → 桌宠本体发光上升淡出 + 通关字幕
 listen("cult-ascension", () => {
   startAscensionEnding();
+});
+
+// 调试：复活（飞升后恢复桌宠，跳出结局动画）
+listen("debug-revive", () => {
+  ascensionActive = false;
+  ascensionStart = 0;
+  previewUntil = 0;
+  // 移除飞升字幕（如果还在）
+  const overlay = document.getElementById("ascension-overlay");
+  if (overlay) overlay.remove();
+  // 恢复窗口显示
+  win.show().catch(() => {});
+  // 恢复正常渲染（render 循环会自动接管，因为 ascensionActive=false）
 });
 
 // ===== 飞升结局动画 =====
