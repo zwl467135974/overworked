@@ -454,12 +454,17 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
         .try_state::<AppState>()
         .and_then(|s| s.save.lock().ok().map(|sv| sv.load_events().cultivation_mode))
         .unwrap_or(false);
+    let ever_cult = app
+        .try_state::<AppState>()
+        .and_then(|s| s.save.lock().ok().map(|sv| sv.load_events().ever_cultivated))
+        .unwrap_or(false);
     // 是否已飞升（飞升后桌宠隐藏，托盘需提供恢复入口）
     let ascended = app
         .try_state::<AppState>()
         .and_then(|s| s.save.lock().ok().map(|sv| sv.load_events().cultivation_realm >= 6))
         .unwrap_or(false);
-    let shop_label = if already_cult || savings >= 500.0 {
+    // 菜单标签：修仙中/曾修仙过/钱够500 → 显示「商店 / 修仙」，否则「？？？」
+    let shop_label = if already_cult || ever_cult || savings >= 500.0 {
         "商店 / 修仙"
     } else {
         "？？？"
@@ -979,14 +984,14 @@ pub fn run() {
                         let _ = app_handle.emit("menu/fall", ());
                     }
                     "shop" => {
-                        // 商店/彩蛋：存够500或已修仙才打开，否则弹神秘提示
+                        // 商店/彩蛋：修仙中/曾修仙过/存够500才打开，否则弹神秘提示
                         let state = app_handle.state::<AppState>();
-                        let (savings, already_cult) = {
+                        let (savings, already_cult, ever_cult) = {
                             let pet = state.state.lock().unwrap();
                             let ev = state.save.lock().map(|s| s.load_events()).unwrap_or_default();
-                            (pet.to_snapshot().savings, ev.cultivation_mode)
+                            (pet.to_snapshot().savings, ev.cultivation_mode, ev.ever_cultivated)
                         };
-                        if already_cult || savings >= 500.0 {
+                        if already_cult || ever_cult || savings >= 500.0 {
                             if let Some(shop_win) = app_handle.get_webview_window("shop") {
                                 let _ = shop_win.show();
                                 let _ = shop_win.set_focus();
