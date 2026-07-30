@@ -10,14 +10,14 @@ body {
   font-family: "PingFang SC", "Microsoft YaHei", "STKaiti", "KaiTi", serif;
   background: linear-gradient(180deg, #1a1410 0%, #2a2018 100%);
   color: #e8dcc0;
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
+  overflow-y: auto;
 }
 
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
   padding: 14px;
   gap: 12px;
 }
@@ -159,8 +159,7 @@ body {
 
 /* 道具商店 */
 .shop {
-  flex: 1;
-  overflow-y: auto;
+  flex-shrink: 0;
 }
 
 .section-title {

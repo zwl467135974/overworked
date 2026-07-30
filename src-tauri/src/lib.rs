@@ -553,6 +553,27 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
         cult_submenu = cult_submenu
             .item(&sep_cult2).item(&fx_label)
             .item(&cult_realmup).item(&cult_dev).item(&cult_asc);
+
+        // 坐骑调试
+        let sep_cult3 = PredefinedMenuItem::separator(app)?;
+        let mount_label = MenuItem::with_id(app, "mount_label", "— 装备坐骑（验证形象）—", false, None::<&str>)?;
+        cult_submenu = cult_submenu.item(&sep_cult3).item(&mount_label);
+        let mount_names = ["卸下", "飞剑", "葫芦", "青龙", "麒麟", "凤凰"];
+        for (i, name) in mount_names.iter().enumerate() {
+            let item = MenuItem::with_id(app, format!("cult:mount:{i}"), format!("{i}. {name}"), true, None::<&str>)?;
+            cult_submenu = cult_submenu.item(&item);
+        }
+
+        // 法术调试
+        let sep_cult4 = PredefinedMenuItem::separator(app)?;
+        let spell_label = MenuItem::with_id(app, "spell_label", "— 施展法术（验证特效）—", false, None::<&str>)?;
+        cult_submenu = cult_submenu.item(&sep_cult4).item(&spell_label);
+        let spell_names = [("fireball", "火球术"), ("ice", "冰封术"), ("thunder", "雷劫术"), ("swords", "万剑诀"), ("armageddon", "天地同寿")];
+        for (key, name) in spell_names {
+            let item = MenuItem::with_id(app, format!("cult:spell:{key}"), name, true, None::<&str>)?;
+            cult_submenu = cult_submenu.item(&item);
+        }
+
         let cult_item = cult_submenu.build()?;
 
         builder = builder.item(&sep).item(&preview_item).item(&cult_item);
@@ -1170,6 +1191,68 @@ pub fn run() {
                         }
                         let _ = app_handle.emit("cult-ascension", ());
                         let _ = app_handle.emit("bubble-show", "（调试）飞升结局特效");
+                    }
+                    _ if id.starts_with("cult:mount:") => {
+                        // 调试：装备/卸下坐骑（自动给拥有权 + 开修仙模式）
+                        let mid: i64 = id[11..].parse().unwrap_or(0);
+                        let state = app_handle.state::<AppState>();
+                        {
+                            let mut save = state.save.lock().unwrap();
+                            let mut ev = save.load_events();
+                            ev.cultivation_mode = true;
+                            if ev.cultivation_realm == 0 { ev.cultivation_realm = 1; }
+                            // 给拥有权
+                            match mid {
+                                1 => ev.owned_mount_sword = true,
+                                2 => ev.owned_mount_gourd = true,
+                                3 => ev.owned_mount_dragon = true,
+                                4 => ev.owned_mount_qilin = true,
+                                5 => ev.owned_mount_phoenix = true,
+                                _ => {}
+                            }
+                            let _ = save.save_events(&ev);
+                        }
+                        // 装备
+                        let cult_events = {
+                            let mut pet = state.state.lock().unwrap();
+                            let mut ev = state.save.lock().map(|s| s.load_events()).unwrap_or_default();
+                            let events = pet.equip_mount(&mut ev, mid).unwrap_or_default();
+                            if let Ok(save) = state.save.lock() { let _ = save.save_events(&ev); }
+                            events
+                        };
+                        emit_cult_events(&app_handle, &cult_events);
+                        push_stats_and_cult(&app_handle, &state);
+                    }
+                    _ if id.starts_with("cult:spell:") => {
+                        // 调试：施展法术（自动给库存5 + 开修仙模式）
+                        let spell = &id[11..];
+                        let state = app_handle.state::<AppState>();
+                        {
+                            let mut save = state.save.lock().unwrap();
+                            let mut ev = save.load_events();
+                            ev.cultivation_mode = true;
+                            if ev.cultivation_realm == 0 { ev.cultivation_realm = 1; }
+                            // 给库存
+                            match spell {
+                                "fireball" => ev.spell_fireball = ev.spell_fireball.max(5),
+                                "ice" => ev.spell_ice = ev.spell_ice.max(5),
+                                "thunder" => ev.spell_thunder = ev.spell_thunder.max(5),
+                                "swords" => ev.spell_swords = ev.spell_swords.max(5),
+                                "armageddon" => ev.spell_armageddon = ev.spell_armageddon.max(5),
+                                _ => {}
+                            }
+                            let _ = save.save_events(&ev);
+                        }
+                        // 施展
+                        let cult_events = {
+                            let mut pet = state.state.lock().unwrap();
+                            let mut ev = state.save.lock().map(|s| s.load_events()).unwrap_or_default();
+                            let events = pet.cast_spell(&mut ev, spell).unwrap_or_default();
+                            if let Ok(save) = state.save.lock() { let _ = save.save_events(&ev); }
+                            events
+                        };
+                        emit_cult_events(&app_handle, &cult_events);
+                        push_stats_and_cult(&app_handle, &state);
                     }
                     _ => {}
                 }
