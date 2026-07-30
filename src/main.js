@@ -480,8 +480,12 @@ function render(now) {
     if (!oneShotAction) {
       ctx.rotate(currentPayload.rotation);
     }
-    // 64×64 帧放大到 96×96 居中显示（1.5x，保持像素感）
-    ctx.drawImage(imgToDraw, -48, -48, 96, 96);
+    // 按图片实际尺寸等比缩放到高度96，居中显示（支持任意尺寸帧）
+    const iw = imgToDraw.naturalWidth || 64;
+    const ih = imgToDraw.naturalHeight || 64;
+    const dh = 96;
+    const dw = iw * (dh / ih);
+    ctx.drawImage(imgToDraw, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();
   } else {
     // 帧未加载完，画占位
