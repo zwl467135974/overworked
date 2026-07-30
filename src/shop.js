@@ -139,6 +139,11 @@ listen("cultivation-update", () => {
   refresh();
 });
 
+// 监听四属性更新（普通模式下也每5秒推送，同步灵石=存款）
+listen("stats-update", () => {
+  refresh();
+});
+
 // 监听突破/走火入魔等事件，刷新并提示
 listen("realm-up", (event) => {
   showToast("突破成功！", "success");

@@ -245,7 +245,10 @@ impl PetState {
         if is_working {
             self.stamina -= (keys_per_sec * 0.15) * dt;
             self.hourly_wage += keys_per_sec * 0.02 * dt;
-            self.savings += self.hourly_wage * dt / 3600.0;
+            // 存款增长：游戏化加速（×60），让打字能肉眼可见地攒钱。
+            // 原真实换算 hourly_wage*dt/3600 太慢（时薪35打工1分钟才涨0.6），
+            // 加速后打工1分钟约涨35，几分钟就能攒够500灵石入门修仙。
+            self.savings += self.hourly_wage * dt / 60.0;
             self.mood -= 0.2 * dt;
             self.focus_seconds += dt;
             // Boss来了检测：挂机超 2 分钟后突然疯狂打字（keys_per_sec > 3）
