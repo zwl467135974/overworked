@@ -36,6 +36,7 @@ pub struct Stats {
     pub total_work_seconds: i64,
     pub total_idle_seconds: i64,
     pub streak_days: i64,
+    pub last_active_date: String,
 }
 
 /// 事件追踪状态（Phase 3 特殊事件用）
@@ -198,17 +199,18 @@ impl SaveStore {
     /// 读统计（调试/未来打工日报用）。
     #[allow(dead_code)]
     pub fn load_stats(&self) -> Stats {
-        let row: rusqlite::Result<(i64, i64, i64, i64)> = self.conn.query_row(
-            "SELECT total_keys, total_work_seconds, total_idle_seconds, streak_days FROM stats WHERE id = 1",
+        let row: rusqlite::Result<(i64, i64, i64, i64, Option<String>)> = self.conn.query_row(
+            "SELECT total_keys, total_work_seconds, total_idle_seconds, streak_days, last_active_date FROM stats WHERE id = 1",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
         );
         match row {
-            Ok((k, w, i, s)) => Stats {
+            Ok((k, w, i, s, d)) => Stats {
                 total_keys: k,
                 total_work_seconds: w,
                 total_idle_seconds: i,
                 streak_days: s,
+                last_active_date: d.unwrap_or_default(),
             },
             _ => Stats::default(),
         }

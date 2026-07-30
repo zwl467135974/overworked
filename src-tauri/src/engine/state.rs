@@ -44,6 +44,8 @@ pub struct PetState {
     focus_seconds: f32,
     /// 在医院直到何时（None=不在医院）。体力归零触发，5分钟出院。
     hospital_until: Option<Instant>,
+    /// 连续挂机时长（秒），用于 Boss来了检测
+    idle_seconds_accum: f32,
 }
 
 /// 事件结果——apply_sample 可能产生的事件，由调用方 emit 给前端。
@@ -54,14 +56,17 @@ pub enum TickEvent {
     HospitalAdmit,
     HospitalDischarge,
     // Phase 3 特殊事件
-    LunchNap,         // 午休（12-13点挂机）
-    Payday(i64),      // 发工资（每月1号），携带金额
-    TeamBuilding,     // 团建（周五下午挂机）
-    Promoted,         // 升职（存款达阈值）
-    VacationStart,    // 度假开始（存款达旅游阈值）
-    VacationEnd,      // 度假结束
-    Leave,            // 离职（连续3天心情0）
-    ReturnFromLeave,  // 离职后回归
+    LunchNap,
+    Payday(i64),
+    TeamBuilding,
+    Promoted,
+    VacationStart,
+    VacationEnd,
+    Leave,
+    ReturnFromLeave,
+    // 趣味玩法
+    BossIncoming,  // Boss来了（摸鱼被抓：长时间挂机后突然疯狂打字）
+    CoffeeBoost,   // 投喂咖啡（command 触发，体力恢复）
 }
 
 impl PetState {
@@ -74,6 +79,7 @@ impl PetState {
             last_tick: Instant::now(),
             focus_seconds: 0.0,
             hospital_until: None,
+            idle_seconds_accum: 0.0,
         }
     }
 
@@ -87,6 +93,7 @@ impl PetState {
             last_tick: Instant::now(),
             focus_seconds: 0.0,
             hospital_until: None,
+            idle_seconds_accum: 0.0,
         }
     }
 
@@ -193,13 +200,21 @@ impl PetState {
             self.savings += self.hourly_wage * dt / 3600.0;
             self.mood -= 0.2 * dt;
             self.focus_seconds += dt;
+            // Boss来了检测：挂机超 2 分钟后突然疯狂打字（keys_per_sec > 3）
+            if self.idle_seconds_accum > 120.0 && keys_per_sec > 3.0 {
+                self.idle_seconds_accum = 0.0;
+                events.push(TickEvent::BossIncoming);
+            }
+            self.idle_seconds_accum = 0.0; // 打字清零挂机计时
         } else if is_idling {
             self.stamina += 1.5 * dt;
-            self.mood += 1.2 * dt; // 摸鱼心情回升（摸鱼快乐）
+            self.mood += 1.2 * dt;
             self.focus_seconds = 0.0;
+            self.idle_seconds_accum += dt; // 累计挂机时长
         } else {
             self.stamina += 0.5 * dt;
-            self.mood += 0.4 * dt; // 一般空闲也回心情（休息就好）
+            self.mood += 0.4 * dt;
+            self.idle_seconds_accum += dt;
         }
 
         // 钳制
@@ -302,6 +317,12 @@ impl PetState {
         self.mood = (self.mood + 20.0).min(100.0);
     }
 
+    /// 投喂咖啡：体力 +30，心情 +10（续命）。
+    pub fn drink_coffee(&mut self) {
+        self.stamina = (self.stamina + 30.0).min(100.0);
+        self.mood = (self.mood + 10.0).min(100.0);
+    }
+
     /// 数值 → 表情 的唯一出口。
     ///
     /// 这就是红线 2 的守门人：调用方拿到的是 Expression，
@@ -377,14 +398,14 @@ fn get_local_hour() -> u32 {
 }
 
 /// 从 Unix 时间戳算今日 YYYY-MM-DD（本地时区近似，用 get_local_hour 的平台逻辑）。
-fn today_str_from_secs(secs: u64) -> String {
+pub fn today_str_from_secs(secs: u64) -> String {
     // MVP：用 UTC 日期 + 本地小时偏移近似。够用。
     let days = secs / 86400;
     date_from_days(days)
 }
 
 /// 从 Unix 时间戳算星期（0=周日, 5=周五, 6=周六）。
-fn weekday_from_secs(secs: u64) -> u32 {
+pub fn weekday_from_secs(secs: u64) -> u32 {
     // 1970-01-01 是周四（4）。算 (4 + days) % 7。
     let days = secs / 86400;
     ((4 + days) % 7) as u32

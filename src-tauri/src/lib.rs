@@ -23,6 +23,7 @@ use std::time::Duration;
 
 use engine::save::SaveStore;
 use engine::{PetState, StatsPayload, TickEvent};
+use engine::state::{today_str_from_secs, weekday_from_secs};
 use rendering_bridge::Expression;
 use sensing::{BehaviorSensor, PlatformSensor};
 use skin::scan_all_skins;
@@ -82,6 +83,20 @@ fn hide_for_one_hour(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Res
         }
     });
     Ok(())
+}
+
+/// 投喂咖啡：体力 +30 + 心情 +10，冒泡"续命了"。
+#[tauri::command]
+fn feed_coffee(app: tauri::AppHandle, state: tauri::State<'_, AppState>) {
+    if let Ok(mut pet) = state.state.lock() {
+        pet.drink_coffee();
+    }
+    // emit 更新的数值
+    if let Ok(pet) = state.state.lock() {
+        let _ = app.emit("stats-update", pet.to_stats_payload());
+    }
+    let _ = app.emit("coffee-boost", ());
+    let _ = app.emit("bubble-show", "续命了！咖啡因注入");
 }
 
 /// 切换特效开关。
@@ -152,6 +167,7 @@ fn save_on_exit(app: &tauri::AppHandle) {
 /// 构建右键菜单。debug=true 时显示调试项（动作预览/事件触发）。
 fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let hide_1h = MenuItem::with_id(app, "hide_1h", "暂时消失 1 小时", true, None::<&str>)?;
+    let coffee = MenuItem::with_id(app, "coffee", "☕ 投喂咖啡", true, None::<&str>)?;
     let fall = MenuItem::with_id(app, "fall", "掉下去", true, None::<&str>)?;
     let report = MenuItem::with_id(app, "report", "打工日报", true, None::<&str>)?;
     let fx_toggle = MenuItem::with_id(app, "fx_toggle", "特效开关", true, None::<&str>)?;
@@ -172,6 +188,7 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
     // 用户菜单基础项
     let mut builder = MenuBuilder::new(app)
         .item(&hide_1h)
+        .item(&coffee)
         .item(&fall)
         .item(&report)
         .item(&fx_toggle)
@@ -317,12 +334,32 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .build(app);
 
-            // 触发连续天数更新 + 成就检查
+            // 触发连续天数更新 + 成就检查 + 每日语录
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             if let Some(s) = app.try_state::<AppState>() {
                 if let Ok(save) = s.save.lock() {
+                    let prev_active = save.load_stats().last_active_date.clone();
                     let _ = save.touch_streak();
-                    // 成就：streak 达成里程碑时冒泡（7/30/100天）
                     let stats = save.load_stats();
+                    let today = today_str_from_secs(now_secs);
+                    // 每日首次启动 → 冒打工语录（按星期）
+                    if prev_active != today {
+                        let weekday = weekday_from_secs(now_secs);
+                        let quote = match weekday {
+                            1 => "周一…它已经不想动了",
+                            2 => "周二，离周末还有四天，它哭了",
+                            3 => "周三，它说这是最难熬的一天",
+                            4 => "周四！它看到希望的曙光了",
+                            5 => "周五！它已经坐不住了！",
+                            6 => "周六加班？它的眼神死了",
+                            _ => "周日还在用电脑…它心疼你",
+                        };
+                        let _ = app.emit("bubble-show", quote);
+                    }
+                    // 成就
                     let milestone = match stats.streak_days {
                         7 => Some("成就：连续打工 7 天！你比它还能卷"),
                         30 => Some("成就：连续打工 30 天！它已经认你做老板了"),
@@ -453,6 +490,13 @@ pub fn run() {
                                 let _ = app_handle.emit("return-from-leave", ());
                                 let _ = app_handle.emit("bubble-show", "新员工报到！");
                             }
+                            TickEvent::BossIncoming => {
+                                let _ = app_handle.emit("boss-incoming", ());
+                                let _ = app_handle.emit("bubble-show", "！！！老板来了！");
+                            }
+                            TickEvent::CoffeeBoost => {
+                                // 由 feed_coffee command 直接处理，tick 不触发
+                            }
                         }
                     }
 
@@ -511,6 +555,17 @@ pub fn run() {
                 match id {
                     "hide_1h" => {
                         let _ = app_handle.emit("menu/hide-1h", ());
+                    }
+                    "coffee" => {
+                        let state = app_handle.state::<AppState>();
+                        if let Ok(mut pet) = state.state.lock() {
+                            pet.drink_coffee();
+                        }
+                        if let Ok(pet) = state.state.lock() {
+                            let _ = app_handle.emit("stats-update", pet.to_stats_payload());
+                        }
+                        let _ = app_handle.emit("coffee-boost", ());
+                        let _ = app_handle.emit("bubble-show", "续命了！咖啡因注入");
                     }
                     "fall" => {
                         let _ = app_handle.emit("menu/fall", ());
@@ -609,6 +664,7 @@ pub fn run() {
             save_window_pos,
             get_work_report,
             toggle_fx,
+            feed_coffee,
             skin::list_skins,
             skin::read_skin_frame,
             skin::switch_skin

@@ -671,6 +671,19 @@ listen("click-pulse", () => {
   fxClickRipple();
 });
 
+// ===== 趣味玩法 =====
+// Boss来了 → 惊恐弹起（poke 动作 + 额外震动）
+listen("boss-incoming", () => {
+  endHoldAction();
+  triggerOneShot("poke");
+  // 全屏震动特效（在 fx-overlay 画）
+});
+// 投喂咖啡 → poke 动作（喝咖啡反应）
+listen("coffee-boost", () => {
+  endHoldAction();
+  triggerOneShot("poke");
+});
+
 function computeBounce(kind, t) {
   switch (kind) {
     case "slow":
