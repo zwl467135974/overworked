@@ -610,57 +610,83 @@ function fxStaminaShard() {
 }
 
 function updateAndDrawParticles(now) {
+  if (particles.length === 0) return;
   const alive = [];
+
+  // 加法混合（发光叠加）
+  const prevComp = ctx.globalCompositeOperation;
+  ctx.globalCompositeOperation = "lighter";
+
   for (const p of particles) {
     const age = now - p.born;
     if (age >= p.life) continue;
     const t = age / p.life;
-    const alpha = 1 - t;
+    const alpha = (1 - t) * (1 - t); // 平方衰减
 
-    // 更新位置
     if (p.vx !== undefined) p.x += p.vx;
-    if (p.vy !== undefined) {
-      p.y += p.vy;
-      if (p.gravity) p.vy += p.gravity; // 通用重力
-    }
-    if (p.type === "ring") p.radius += p.vrad || 0.8;
+    if (p.vy !== undefined) { p.y += p.vy; if (p.gravity) p.vy += p.gravity; }
+    if (p.type === "ring") p.radius += p.vrad || 1;
 
-    ctx.globalAlpha = alpha;
+    // 出生脉冲（前 60ms 弹出）
+    let scale = 1;
+    if (age < 60) { scale = age / 60; scale = 1 - (1 - scale) * (1 - scale); }
 
-    switch (p.type) {
-      case "dot":
-        ctx.fillStyle = p.color;
-        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
-        break;
-      case "symbol":
-        ctx.fillStyle = p.color;
-        ctx.font = "bold 10px monospace";
-        ctx.fillText(p.text, Math.round(p.x), Math.round(p.y));
-        break;
-      case "line":
-        ctx.fillStyle = p.color;
-        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.len, 2);
-        break;
-      case "ring":
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = p.lineWidth || 1.5;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.stroke();
-        break;
-      case "shard":
-        ctx.fillStyle = p.color;
-        ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
-        break;
+    ctx.globalAlpha = alpha * scale;
+
+    if (p.type === "dot") {
+      // 发光球：径向渐变
+      const r = p.size * 2.5 * scale;
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      g.addColorStop(0, p.color);
+      g.addColorStop(0.4, p.color);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.type === "ring") {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = (p.lineWidth || 3) * (1 - t * 0.7) * scale;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 12 * (1 - t);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else if (p.type === "line") {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), p.len * scale, 2);
+    } else if (p.type === "shard") {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
     }
     alive.push(p);
   }
-  particles = alive;
-  ctx.globalAlpha = 1.0;
+
+  // 代码符号单独渲染（source-over + glow，不走 lighter）
+  ctx.globalCompositeOperation = "source-over";
+  for (const p of alive) {
+    if (p.type !== "symbol") continue;
+    const age = now - p.born;
+    if (age >= p.life) continue;
+    const t = age / p.life;
+    ctx.globalAlpha = (1 - t) * (1 - t);
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = p.color;
+    ctx.font = "bold 12px monospace";
+    ctx.fillText(p.text, Math.round(p.x), Math.round(p.y));
+  }
+  ctx.shadowBlur = 0;
+
+  particles = alive.filter((p) => (now - p.born) < p.life);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = prevComp;
 }
 
 // ===== 监听脉冲事件 → 触发特效 =====
 listen("typing-pulse", (event) => {
+  if (!fxEnabled) return;
   const count = event.payload || 1;
   fxTypingDots(count);
   fxCodeSymbols(count);
@@ -668,7 +694,15 @@ listen("typing-pulse", (event) => {
 });
 
 listen("click-pulse", () => {
-  fxClickRipple();
+  // 桌宠身上画波纹（无全屏窗口，点击位置不可知）
+  if (fxEnabled) fxClickRipple();
+});
+
+// 特效开关
+let fxEnabled = true;
+listen("fx-toggled", (event) => {
+  fxEnabled = event.payload;
+  if (!fxEnabled) particles = []; // 关闭时清空粒子
 });
 
 // ===== 趣味玩法 =====
