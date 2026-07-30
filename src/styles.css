@@ -146,6 +146,63 @@ body {
   transition: color 0.3s ease;
 }
 
+/* ===== 修仙面板（修仙模式放开红线：境界/修为可见） ===== */
+/* 修仙模式下替换四属性面板，显示境界 + 修为条 */
+#cult-panel {
+  position: absolute;
+  left: 16px;
+  bottom: 100px;
+  width: 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 9px;
+  line-height: 1;
+  z-index: 5;
+}
+
+/* 进入/离开修仙模式的过渡 */
+#cult-panel[hidden] { display: none; }
+
+.cult-label {
+  color: #92400e;
+  font-weight: bold;
+}
+
+.cult-realm {
+  color: #b45309;
+  font-weight: bold;
+  text-shadow: 0 0 2px rgba(255, 215, 0, 0.5);
+}
+
+/* 修为条 —— 翡翠绿，区别于体力的草绿和心情的紫 */
+#bar-exp {
+  background: linear-gradient(90deg, #047857 0%, #34d399 100%);
+  width: 0%;
+  box-shadow: 0 0 3px rgba(52, 211, 153, 0.6);
+}
+
+/* 突破成功金光闪烁 */
+@keyframes realmFlash {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(2) drop-shadow(0 0 4px #ffd700); }
+}
+.cult-realm.up {
+  animation: realmFlash 0.8s ease 2;
+}
+
+/* 走火入魔红光 */
+@keyframes deviationShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-2px); }
+  40% { transform: translateX(2px); }
+  60% { transform: translateX(-1px); }
+  80% { transform: translateX(1px); }
+}
+#cult-panel.deviation {
+  animation: deviationShake 0.4s ease 3;
+}
+
 /* ===== 冒泡（红线 1：只反应不教育；红线 3：3 秒消失不打断） ===== */
 /* 冒泡定位在角色正上方（窗口的上半透明区） */
 #bubble {

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>天工阁</title>
+    <link rel="stylesheet" href="/shop.css" />
+    <script type="module" src="/shop.js" defer></script>
+  </head>
+  <body>
+    <div id="app">
+      <!-- 顶部：道号 / 灵石 -->
+      <header class="topbar">
+        <div class="title">天 工 阁</div>
+        <div class="spirit-stone">
+          <span class="icon">◈</span>
+          <span id="num-savings">0</span>
+        </div>
+      </header>
+
+      <!-- 修炼境界面板 -->
+      <section class="panel" id="realm-panel">
+        <div class="realm-row">
+          <span class="realm-label">境界</span>
+          <span class="realm-name" id="realm-name">凡人</span>
+        </div>
+        <div class="exp-bar">
+          <div class="exp-fill" id="bar-exp"></div>
+          <span class="exp-text" id="exp-text">0/100</span>
+        </div>
+        <div class="next-realm">下一境：<span id="next-realm">练气</span></div>
+      </section>
+
+      <!-- 模式切换 -->
+      <section class="mode-section">
+        <button id="btn-toggle-mode" class="btn-mode">开启修仙之路（500 灵石）</button>
+        <p class="hint" id="mode-hint">攒够 500 灵石，踏入修仙。普通模式守规矩，修仙模式见真章。</p>
+      </section>
+
+      <!-- 道具商店（修仙模式可见） -->
+      <section class="shop" id="shop-section" hidden>
+        <div class="section-title">珍宝阁</div>
+        <div class="item-list">
+          <div class="item-card" data-item="breakthrough_pill">
+            <div class="item-icon">丹</div>
+            <div class="item-info">
+              <div class="item-name">突破丹</div>
+              <div class="item-desc">尝试突破当前境界</div>
+            </div>
+            <div class="item-right">
+              <div class="item-price" id="price-breakthrough_pill">200</div>
+              <button class="btn-buy" data-item="breakthrough_pill">购买</button>
+            </div>
+          </div>
+          <div class="item-card" data-item="qi_pill">
+            <div class="item-icon">气</div>
+            <div class="item-info">
+              <div class="item-name">回气丹</div>
+              <div class="item-desc">立即恢复 50 体力</div>
+            </div>
+            <div class="item-right">
+              <div class="item-price">50</div>
+              <button class="btn-buy" data-item="qi_pill">购买</button>
+            </div>
+          </div>
+          <div class="item-card" data-item="life_pill">
+            <div class="item-icon">命</div>
+            <div class="item-info">
+              <div class="item-name">续命丹</div>
+              <div class="item-desc">免疫一次过劳送医（持有生效）</div>
+            </div>
+            <div class="item-right">
+              <div class="item-price">100</div>
+              <button class="btn-buy" data-item="life_pill">购买</button>
+            </div>
+          </div>
+          <div class="item-card" data-item="spirit_talisman">
+            <div class="item-icon">符</div>
+            <div class="item-info">
+              <div class="item-name">聚灵符</div>
+              <div class="item-desc">修为获取 ×2，持续 1 小时</div>
+            </div>
+            <div class="item-right">
+              <div class="item-price">200</div>
+              <button class="btn-buy" data-item="spirit_talisman">购买</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 背包 -->
+      <section class="inventory" id="inv-section" hidden>
+        <div class="section-title">储物袋</div>
+        <div class="inv-grid">
+          <div class="inv-item"><span class="inv-icon">气</span><span class="inv-count" id="cnt-qi_pill">0</span></div>
+          <div class="inv-item"><span class="inv-icon">命</span><span class="inv-count" id="cnt-life_pill">0</span></div>
+          <div class="inv-item"><span class="inv-icon">符</span><span class="inv-count" id="cnt-spirit_talisman">0</span></div>
+        </div>
+      </section>
+
+      <!-- 底部提示 -->
+      <footer class="toast" id="toast"></footer>
+    </div>
+  </body>
+</html>

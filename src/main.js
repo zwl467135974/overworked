@@ -1040,6 +1040,67 @@ function updateSmoothBars() {
 }
 requestAnimationFrame(updateSmoothBars);
 
+// ===== 修仙模式（红线放开：境界/修为可见） =====
+const cultPanel = document.getElementById("cult-panel");
+const cultRealmEl = document.getElementById("cult-realm");
+const barExp = document.getElementById("bar-exp");
+const statsPanel = document.getElementById("stats-panel");
+let cultMode = false;
+const REALM_NAMES = ["凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升"];
+
+// 修仙面板更新（tick 推送 + 商店购买后推送）
+listen("cultivation-update", (event) => {
+  const c = event.payload;
+  if (c.cultivation_mode && !cultMode) {
+    // 刚进入修仙模式：切换面板
+    cultMode = true;
+    statsPanel.hidden = true;
+    cultPanel.hidden = false;
+  } else if (!c.cultivation_mode && cultMode) {
+    // 切回普通模式
+    cultMode = false;
+    statsPanel.hidden = false;
+    cultPanel.hidden = true;
+  }
+  if (cultMode) {
+    if (cultRealmEl) cultRealmEl.textContent = REALM_NAMES[c.realm] || "凡人";
+    if (barExp) barExp.style.width = `${Math.max(0, Math.min(100, c.exp))}%`;
+  }
+});
+
+// 开启修仙 → 庆祝动作
+listen("cultivation-on", () => {
+  endHoldAction();
+  triggerOneShot("promoted"); // 复用升职庆祝动画
+});
+// 切回普通
+listen("cultivation-off", () => {
+  previewUntil = 0;
+});
+// 突破成功 → 金光 + 庆祝
+listen("realm-up", (event) => {
+  endHoldAction();
+  triggerOneShot("promoted");
+  if (cultRealmEl) {
+    cultRealmEl.classList.remove("up");
+    void cultRealmEl.offsetWidth;
+    cultRealmEl.classList.add("up");
+  }
+});
+// 走火入魔 → 颤抖
+listen("cult-deviation", () => {
+  if (cultPanel) {
+    cultPanel.classList.remove("deviation");
+    void cultPanel.offsetWidth;
+    cultPanel.classList.add("deviation");
+  }
+});
+// 飞升结局 → 消失动画（暂用 happy 庆祝，后续加专属特效）
+listen("cult-ascension", () => {
+  endHoldAction();
+  triggerOneShot("happy");
+});
+
 // ===== 启动（顶层 await，target=esnext 支持） =====
 await loadSkin("default");
 requestAnimationFrame(render);

@@ -1,0 +1,341 @@
+/* 天工阁 —— 修仙商店（古风金墨） */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "STKaiti", "KaiTi", serif;
+  background: linear-gradient(180deg, #1a1410 0%, #2a2018 100%);
+  color: #e8dcc0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 14px;
+  gap: 12px;
+}
+
+/* 顶部 */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, #3a2818 0%, #5a4028 50%, #3a2818 100%);
+  border: 1px solid #8a6a3a;
+  border-radius: 4px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 8px;
+  color: #ffd97a;
+  text-shadow: 0 0 8px rgba(255, 200, 80, 0.4);
+}
+
+.spirit-stone {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 18px;
+  color: #ffe9a8;
+  font-weight: bold;
+}
+
+.spirit-stone .icon {
+  color: #6ad7c1;
+  text-shadow: 0 0 6px rgba(106, 215, 193, 0.6);
+}
+
+/* 境界面板 */
+.panel {
+  background: rgba(255, 230, 180, 0.06);
+  border: 1px solid #6a5030;
+  border-radius: 4px;
+  padding: 12px 14px;
+}
+
+.realm-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.realm-label {
+  font-size: 13px;
+  color: #b09870;
+}
+
+.realm-name {
+  font-size: 20px;
+  font-weight: bold;
+  color: #ffd97a;
+  text-shadow: 0 0 8px rgba(255, 200, 80, 0.4);
+}
+
+.exp-bar {
+  position: relative;
+  height: 16px;
+  background: #1a1208;
+  border: 1px solid #5a4028;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.exp-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4a8c6a 0%, #7ad9a8 100%);
+  transition: width 0.6s ease;
+  box-shadow: 0 0 8px rgba(106, 215, 193, 0.5);
+}
+
+.exp-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.next-realm {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #8a7450;
+}
+
+.next-realm span {
+  color: #c9a868;
+}
+
+/* 模式切换 */
+.mode-section {
+  text-align: center;
+}
+
+.btn-mode {
+  width: 100%;
+  padding: 12px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: #1a1410;
+  background: linear-gradient(180deg, #ffd97a 0%, #c9a848 100%);
+  border: 1px solid #8a6a3a;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-mode:hover {
+  background: linear-gradient(180deg, #ffe9a8 0%, #d9b858 100%);
+  box-shadow: 0 0 12px rgba(255, 200, 80, 0.4);
+}
+
+.btn-mode.off {
+  background: linear-gradient(180deg, #8a7450 0%, #5a4830 100%);
+  color: #e8dcc0;
+}
+
+.hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8a7450;
+  line-height: 1.5;
+}
+
+/* 道具商店 */
+.shop {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.section-title {
+  font-size: 14px;
+  color: #c9a868;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed #5a4028;
+}
+
+.item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(255, 230, 180, 0.04);
+  border: 1px solid #4a3820;
+  border-radius: 4px;
+  transition: border-color 0.2s;
+}
+
+.item-card:hover {
+  border-color: #8a6a3a;
+}
+
+.item-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffd97a;
+  background: radial-gradient(circle, #4a3018 0%, #2a1810 100%);
+  border: 1px solid #8a6a3a;
+  border-radius: 50%;
+}
+
+.item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-name {
+  font-size: 14px;
+  font-weight: bold;
+  color: #e8dcc0;
+}
+
+.item-desc {
+  font-size: 11px;
+  color: #8a7450;
+  margin-top: 2px;
+}
+
+.item-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.item-price {
+  font-size: 14px;
+  font-weight: bold;
+  color: #6ad7c1;
+  margin-bottom: 4px;
+}
+
+.item-price::before {
+  content: "◈ ";
+}
+
+.btn-buy {
+  padding: 4px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  color: #e8dcc0;
+  background: #4a3820;
+  border: 1px solid #8a6a3a;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-buy:hover {
+  background: #6a5030;
+  color: #ffd97a;
+}
+
+.btn-buy:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 背包 */
+.inventory {
+  flex-shrink: 0;
+}
+
+.inv-grid {
+  display: flex;
+  gap: 8px;
+}
+
+.inv-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(255, 230, 180, 0.04);
+  border: 1px solid #4a3820;
+  border-radius: 4px;
+}
+
+.inv-icon {
+  font-size: 16px;
+  color: #ffd97a;
+}
+
+.inv-count {
+  font-size: 14px;
+  font-weight: bold;
+  color: #6ad7c1;
+}
+
+/* 底部 toast */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 8px 20px;
+  background: rgba(26, 20, 16, 0.95);
+  border: 1px solid #8a6a3a;
+  border-radius: 4px;
+  color: #e8dcc0;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s;
+  z-index: 100;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.toast.error {
+  border-color: #c95a3a;
+  color: #ff9870;
+}
+
+.toast.success {
+  border-color: #6ad7c1;
+  color: #6ad7c1;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #5a4028;
+  border-radius: 3px;
+}

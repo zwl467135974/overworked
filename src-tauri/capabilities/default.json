@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for all windows",
-  "windows": ["main", "fx-overlay"],
+  "windows": ["main", "fx-overlay", "shop"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
@@ -13,6 +13,7 @@
     "core:window:allow-hide",
     "core:window:allow-set-ignore-cursor-events",
     "core:window:allow-scale-factor",
+    "core:window:allow-set-focus",
     "opener:default"
   ]
 }

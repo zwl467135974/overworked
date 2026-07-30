@@ -22,8 +22,10 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use engine::save::SaveStore;
-use engine::{PetState, StatsPayload, TickEvent};
-use engine::state::{today_str_from_secs, weekday_from_secs};
+use engine::state::{
+    breakthrough_price, realm_name, today_str_from_secs, weekday_from_secs, CultEvent,
+};
+use engine::{CultivationPayload, PetState, StatsPayload, TickEvent};
 use rendering_bridge::Expression;
 use sensing::{BehaviorSensor, PlatformSensor};
 use skin::scan_all_skins;
@@ -132,6 +134,163 @@ fn toggle_fx(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> bool {
     new_enabled
 }
 
+/// 打开商店窗口（修仙模式专属入口）。
+#[tauri::command]
+fn open_shop(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(shop) = app.get_webview_window("shop") {
+        // 已存在：前置显示
+        let _ = shop.show();
+        let _ = shop.set_focus();
+    } else {
+        return Err("商店窗口未注册".into());
+    }
+    Ok(())
+}
+
+/// 商店窗口数据载荷。
+#[derive(Debug, serde::Serialize)]
+struct ShopData {
+    cultivation_mode: bool,
+    realm: i64,
+    realm_name: String,
+    exp: f32,
+    savings: f32,
+    qi_pill: i64,
+    life_pill: i64,
+    spirit_talisman: i64,
+    breakthrough_price: i64,
+    next_realm: String,
+}
+
+/// 获取商店数据（商店窗口启动时拉取）。
+#[tauri::command]
+fn get_shop_data(state: tauri::State<'_, AppState>) -> ShopData {
+    let (savings, ev) = {
+        let pet = state.state.lock().unwrap();
+        let ev = state.save.lock().map(|s| s.load_events()).unwrap_or_default();
+        (pet.to_cultivation_payload(&ev).savings, ev)
+    };
+    ShopData {
+        cultivation_mode: ev.cultivation_mode,
+        realm: ev.cultivation_realm,
+        realm_name: realm_name(ev.cultivation_realm).to_string(),
+        exp: ev.cultivation_exp,
+        savings,
+        qi_pill: ev.item_qi_pill,
+        life_pill: ev.item_life_pill,
+        spirit_talisman: ev.item_spirit_talisman,
+        breakthrough_price: breakthrough_price(ev.cultivation_realm),
+        next_realm: realm_name((ev.cultivation_realm + 1).min(6)).to_string(),
+    }
+}
+
+/// 购买/使用道具。item: "qi_pill"|"life_pill"|"spirit_talisman"|"breakthrough_pill"。
+#[tauri::command]
+fn buy_item(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    item: String,
+) -> Result<(), String> {
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let cult_events = {
+        let mut pet = state.state.lock().map_err(|e| e.to_string())?;
+        let mut ev = state
+            .save
+            .lock()
+            .map(|s| s.load_events())
+            .map_err(|e| e.to_string())?;
+        let events = pet.buy_item(&mut ev, &item, now_secs)?;
+        // 存回事件追踪 + 四属性
+        if let Ok(save) = state.save.lock() {
+            let _ = save.save_events(&ev);
+            let _ = save.save_state(pet.to_snapshot());
+        }
+        events
+    };
+    emit_cult_events(&app, &cult_events);
+    // 推送更新数值给所有窗口
+    push_stats_and_cult(&app, &state);
+    Ok(())
+}
+
+/// 切换修仙模式（商店"开启修仙"/"切回普通"按钮）。
+#[tauri::command]
+fn toggle_cultivation(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let cult_events = {
+        let mut pet = state.state.lock().map_err(|e| e.to_string())?;
+        let mut ev = state
+            .save
+            .lock()
+            .map(|s| s.load_events())
+            .map_err(|e| e.to_string())?;
+        let events = pet.toggle_cultivation(&mut ev, now_secs)?;
+        if let Ok(save) = state.save.lock() {
+            let _ = save.save_events(&ev);
+            let _ = save.save_state(pet.to_snapshot());
+        }
+        events
+    };
+    emit_cult_events(&app, &cult_events);
+    push_stats_and_cult(&app, &state);
+    Ok(())
+}
+
+/// 把修仙事件 emit 给前端（main 窗口做表情/特效）。
+fn emit_cult_events(app: &tauri::AppHandle, events: &[CultEvent]) {
+    for ev in events {
+        match ev {
+            CultEvent::CultivationOn => {
+                let _ = app.emit("cultivation-on", ());
+                let _ = app.emit("bubble-show", "踏入修仙之路…");
+            }
+            CultEvent::CultivationOff => {
+                let _ = app.emit("cultivation-off", ());
+                let _ = app.emit("bubble-show", "还是打工踏实");
+            }
+            CultEvent::Bought { item } => {
+                let _ = app.emit("cult-bought", item.clone());
+            }
+            CultEvent::RealmUp(r) => {
+                let _ = app.emit("realm-up", *r);
+                let _ = app.emit("bubble-show", format!("突破！{}", realm_name(*r)));
+            }
+            CultEvent::Deviation => {
+                let _ = app.emit("cult-deviation", ());
+                let _ = app.emit("bubble-show", "走火入魔！");
+            }
+            CultEvent::Ascension => {
+                let _ = app.emit("cult-ascension", ());
+                let _ = app.emit("bubble-show", "飞升！！");
+            }
+        }
+    }
+}
+
+/// 推送四属性 + 修仙面板给所有窗口（商店购买后用）。
+fn push_stats_and_cult(app: &tauri::AppHandle, state: &tauri::State<'_, AppState>) {
+    let (stats, cult) = {
+        let pet = state.state.lock().unwrap();
+        let ev = state
+            .save
+            .lock()
+            .map(|s| s.load_events())
+            .unwrap_or_default();
+        (
+            pet.to_stats_payload(),
+            pet.to_cultivation_payload(&ev),
+        )
+    };
+    let _ = app.emit("stats-update", stats);
+    let _ = app.emit("cultivation-update", cult);
+}
+
 /// 打工日报：返回格式化统计文本（用冒泡展示，不做复杂UI）。
 #[tauri::command]
 fn get_work_report(state: tauri::State<'_, AppState>) -> String {
@@ -182,6 +341,7 @@ fn save_on_exit(app: &tauri::AppHandle) {
 fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let hide_1h = MenuItem::with_id(app, "hide_1h", "暂时消失 1 小时", true, None::<&str>)?;
     let coffee = MenuItem::with_id(app, "coffee", "投喂咖啡", true, None::<&str>)?;
+    let shop = MenuItem::with_id(app, "shop", "商店 / 修仙", true, None::<&str>)?;
     let reset_pos = MenuItem::with_id(app, "reset_pos", "回位", true, None::<&str>)?;
     let fall = MenuItem::with_id(app, "fall", "掉下去", true, None::<&str>)?;
     let report = MenuItem::with_id(app, "report", "打工日报", true, None::<&str>)?;
@@ -204,6 +364,7 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
     let mut builder = MenuBuilder::new(app)
         .item(&hide_1h)
         .item(&coffee)
+        .item(&shop)
         .item(&reset_pos)
         .item(&fall)
         .item(&report)
@@ -339,6 +500,17 @@ pub fn run() {
                 save: Mutex::new(save_store),
             });
 
+            // 启动时推送一次修仙状态（让前端立即初始化境界面板，不用等 5 秒 tick）
+            if let Some(s) = app.try_state::<AppState>() {
+                if let (Ok(pet), Ok(save)) = (s.state.lock(), s.save.lock()) {
+                    let ev = save.load_events();
+                    let cult = pet.to_cultivation_payload(&ev);
+                    if cult.cultivation_mode {
+                        let _ = app.emit("cultivation-update", cult);
+                    }
+                }
+            }
+
             // ===== 系统托盘（红线3：不占任务栏，但用户能找到）=====
             let tray_menu = state_menu(app.handle(), false).unwrap_or_else(|_| {
                 MenuBuilder::new(app).build().unwrap()
@@ -414,7 +586,7 @@ pub fn run() {
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_secs())
                         .unwrap_or(0);
-                    let (expression, snapshot, stats, events, work_secs, idle_secs) = {
+                    let (expression, snapshot, stats, events, work_secs, idle_secs, cult) = {
                         let mut pet = match state.state.lock() {
                             Ok(g) => g,
                             Err(e) => {
@@ -434,6 +606,7 @@ pub fn run() {
                         }
                         let worked = sample.key_count > 5;
                         let idled = sample.idle_seconds >= 30;
+                        let cult = pet.to_cultivation_payload(&ev_state);
                         (
                             pet.expression(),
                             pet.to_snapshot(),
@@ -441,12 +614,17 @@ pub fn run() {
                             events,
                             if worked { SAMPLE_INTERVAL.as_secs() as i64 } else { 0 },
                             if idled { SAMPLE_INTERVAL.as_secs() as i64 } else { 0 },
+                            cult,
                         )
                     };
 
                     // 3. 推送
                     let _ = app_handle.emit("expression-changed", expression.to_payload());
                     let _ = app_handle.emit("stats-update", stats);
+                    // 修仙模式下推送修仙面板（境界条/修为条实时更新）
+                    if cult.cultivation_mode {
+                        let _ = app_handle.emit("cultivation-update", cult);
+                    }
                     // 周期 emit 桌宠位置给 fx-overlay（逻辑坐标，fx-overlay 自己转物理坐标）
                     if let Some(main_win) = app_handle.get_webview_window("main") {
                         if let Ok(pos) = main_win.outer_position() {
@@ -586,6 +764,13 @@ pub fn run() {
                     "fall" => {
                         let _ = app_handle.emit("menu/fall", ());
                     }
+                    "shop" => {
+                        // 打开商店窗口
+                        if let Some(shop_win) = app_handle.get_webview_window("shop") {
+                            let _ = shop_win.show();
+                            let _ = shop_win.set_focus();
+                        }
+                    }
                     "reset_pos" => {
                         if let Some(win) = app_handle.get_webview_window("main") {
                             use tauri::PhysicalPosition;
@@ -693,6 +878,10 @@ pub fn run() {
             toggle_fx,
             feed_coffee,
             reset_position,
+            open_shop,
+            get_shop_data,
+            buy_item,
+            toggle_cultivation,
             skin::list_skins,
             skin::read_skin_frame,
             skin::switch_skin

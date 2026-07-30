@@ -24,6 +24,52 @@ pub struct StatsPayload {
     pub savings: f32,      // 累积
 }
 
+/// 修仙面板载荷（修仙模式下放开的红线：境界/修为/灵石全可见）。
+/// 普通模式下 frontend 收到 cultivation_mode=false，不渲染此区。
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct CultivationPayload {
+    pub cultivation_mode: bool, // 是否修仙模式
+    pub realm: i64,             // 0-6
+    pub exp: f32,               // 0-100
+    pub savings: f32,           // 灵石=存款（共用）
+    pub qi_pill: i64,
+    pub life_pill: i64,
+    pub spirit_talisman: i64,
+}
+
+/// 修仙相关事件（与 TickEvent 平行，由 buy_item 等指令路径返回）。
+#[derive(Debug, Clone)]
+pub enum CultEvent {
+    CultivationOn,   // 开启修仙模式（凡人→练气）
+    CultivationOff,  // 切回普通模式
+    Bought { item: String }, // 购买道具
+    RealmUp(i64),    // 突破升境界
+    Deviation,       // 走火入魔
+    Ascension,       // 飞升
+}
+
+/// 境界信息表
+const REALM_NAMES: [&str; 7] = [
+    "凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升",
+];
+
+/// 突破丹价（按当前境界索引）
+const BREAKTHROUGH_PILL_PRICE: [i64; 6] = [200, 500, 1000, 3000, 8000, 99999];
+/// 突破成功率（按当前境界索引，越高越难）
+const BREAKTHROUGH_RATE: [f32; 6] = [0.90, 0.85, 0.80, 0.70, 0.60, 0.50];
+
+pub fn realm_name(realm: i64) -> &'static str {
+    REALM_NAMES.get(realm as usize).copied().unwrap_or("？？？")
+}
+
+pub fn breakthrough_price(realm: i64) -> i64 {
+    BREAKTHROUGH_PILL_PRICE.get(realm as usize).copied().unwrap_or(99999)
+}
+
+pub fn breakthrough_rate(realm: i64) -> f32 {
+    BREAKTHROUGH_RATE.get(realm as usize).copied().unwrap_or(0.5)
+}
+
 /// 像素打工仔的完整内部状态。
 ///
 /// 四个属性对应 PRD 3.3：
@@ -222,12 +268,35 @@ impl PetState {
         self.hourly_wage = self.hourly_wage.clamp(15.0, 200.0);
         self.mood = self.mood.clamp(0.0, 100.0);
 
+        // ===== 修为积累（修仙模式专属） =====
+        // 红线放开：数值可见、游戏化。打工/挂机/专注都积累，专注最快。
+        // 聚灵符期间 ×2。
+        if ev.cultivation_mode && ev.cultivation_realm < 6 {
+            let boost = now_secs as i64 <= ev.spirit_boost_until;
+            let mult = if boost { 2.0 } else { 1.0 };
+            let gain = if is_working {
+                // 打工每秒 +0.2（5 秒约 +1）
+                0.2 * dt * mult
+            } else if is_idling {
+                0.1 * dt * mult
+            } else {
+                0.05 * dt * mult
+            };
+            ev.cultivation_exp = (ev.cultivation_exp + gain * 10.0).min(100.0);
+        }
+
         // ===== 番茄钟检查 =====
         const FOCUS_THRESHOLD: f32 = 1500.0; // 25 分钟
         if self.focus_seconds >= FOCUS_THRESHOLD {
             self.focus_seconds = 0.0;
             self.savings += 200.0; // 项目交付奖金
             self.mood = (self.mood + 15.0).min(100.0); // 交付心情大好
+            // 修仙模式：交付=悟道，修为大涨
+            if ev.cultivation_mode && ev.cultivation_realm < 6 {
+                let boost = now_secs as i64 <= ev.spirit_boost_until;
+                let g = if boost { 40.0 } else { 20.0 };
+                ev.cultivation_exp = (ev.cultivation_exp + g).min(100.0);
+            }
             events.push(TickEvent::PomodoroComplete);
         }
 
@@ -321,6 +390,145 @@ impl PetState {
     pub fn drink_coffee(&mut self) {
         self.stamina = (self.stamina + 30.0).min(100.0);
         self.mood = (self.mood + 10.0).min(100.0);
+    }
+
+    /// 导出修仙面板载荷（修仙模式下放开红线，数值全可见）。
+    pub fn to_cultivation_payload(&self, ev: &save::EventState) -> CultivationPayload {
+        CultivationPayload {
+            cultivation_mode: ev.cultivation_mode,
+            realm: ev.cultivation_realm,
+            exp: ev.cultivation_exp,
+            savings: self.savings,
+            qi_pill: ev.item_qi_pill,
+            life_pill: ev.item_life_pill,
+            spirit_talisman: ev.item_spirit_talisman,
+        }
+    }
+
+    // ===== 修仙指令路径（command 调用，返回事件列表） =====
+
+    /// 切换修仙模式。
+    /// 开启前提：存款 >= 500（买得起入门券）。
+    /// 关闭：随时可关。
+    pub fn toggle_cultivation(
+        &mut self,
+        ev: &mut save::EventState,
+        now_secs: u64,
+    ) -> Result<Vec<CultEvent>, String> {
+        let mut events = Vec::new();
+        if ev.cultivation_mode {
+            // 切回普通模式
+            ev.cultivation_mode = false;
+            events.push(CultEvent::CultivationOff);
+            Ok(events)
+        } else {
+            // 开启：扣 500 灵石，进入练气期
+            if self.savings < 500.0 {
+                return Err("灵石不足，入门券需要 500".into());
+            }
+            self.savings -= 500.0;
+            ev.cultivation_mode = true;
+            ev.cultivation_realm = 1; // 凡人→练气
+            ev.cultivation_exp = 0.0;
+            events.push(CultEvent::CultivationOn);
+            let _ = now_secs;
+            Ok(events)
+        }
+    }
+
+    /// 购买道具。item 取值: "qi_pill" | "life_pill" | "spirit_talisman" | "breakthrough_pill"
+    pub fn buy_item(
+        &mut self,
+        ev: &mut save::EventState,
+        item: &str,
+        now_secs: u64,
+    ) -> Result<Vec<CultEvent>, String> {
+        if !ev.cultivation_mode {
+            return Err("需先开启修仙模式".into());
+        }
+        let price = match item {
+            "qi_pill" => 50,
+            "life_pill" => 100,
+            "spirit_talisman" => 200,
+            "breakthrough_pill" => breakthrough_price(ev.cultivation_realm),
+            _ => return Err("未知道具".into()),
+        };
+        if (self.savings as i64) < price {
+            return Err(format!("灵石不足，需要 {}", price));
+        }
+        self.savings -= price as f32;
+        let mut events = Vec::new();
+        match item {
+            "qi_pill" => {
+                ev.item_qi_pill += 1;
+                // 立即回气（其实也可以先持有再激活；这里直接生效，简化）
+                self.stamina = (self.stamina + 50.0).min(100.0);
+            }
+            "life_pill" => {
+                ev.item_life_pill += 1;
+            }
+            "spirit_talisman" => {
+                ev.item_spirit_talisman += 1;
+                // 立即激活：修为 ×2 持续 1 小时
+                ev.spirit_boost_until = (now_secs as i64) + 3600;
+            }
+            "breakthrough_pill" => {
+                // 突破丹：直接尝试突破
+                return self.attempt_breakthrough(ev, now_secs);
+            }
+            _ => {}
+        }
+        events.push(CultEvent::Bought {
+            item: item.to_string(),
+        });
+        Ok(events)
+    }
+
+    /// 尝试突破。需修为满 100，消耗一颗突破丹（由 buy_item("breakthrough_pill") 触发）。
+    pub fn attempt_breakthrough(
+        &mut self,
+        ev: &mut save::EventState,
+        _now_secs: u64,
+    ) -> Result<Vec<CultEvent>, String> {
+        if !ev.cultivation_mode {
+            return Err("需先开启修仙模式".into());
+        }
+        if ev.cultivation_realm >= 6 {
+            return Err("已飞升，无境可破".into());
+        }
+        if ev.cultivation_exp < 100.0 {
+            return Err(format!(
+                "修为不足（{:.0}/100）",
+                ev.cultivation_exp
+            ));
+        }
+        let rate = breakthrough_rate(ev.cultivation_realm);
+        let roll: f32 = {
+            // 简单 LCG 伪随机（不依赖 rand crate）
+            let seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos() as u64)
+                .unwrap_or(0);
+            let s = seed.wrapping_mul(2654435761).wrapping_add(1);
+            ((s >> 32) as f32) / (u32::MAX as f32)
+        };
+        let mut events = Vec::new();
+        if roll < rate {
+            // 突破成功
+            ev.cultivation_realm += 1;
+            ev.cultivation_exp = 0.0;
+            if ev.cultivation_realm >= 6 {
+                events.push(CultEvent::Ascension);
+            } else {
+                events.push(CultEvent::RealmUp(ev.cultivation_realm));
+            }
+        } else {
+            // 走火入魔：修为清零 + 体力降到 20
+            ev.cultivation_exp = 0.0;
+            self.stamina = 20.0;
+            events.push(CultEvent::Deviation);
+        }
+        Ok(events)
     }
 
     /// 数值 → 表情 的唯一出口。

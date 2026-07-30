@@ -41,6 +41,22 @@
         "skipTaskbar": true,
         "visible": true,
         "center": true
+      },
+      {
+        "label": "shop",
+        "title": "天工阁 — 修仙商店",
+        "url": "shop.html",
+        "width": 420,
+        "height": 600,
+        "decorations": true,
+        "transparent": false,
+        "alwaysOnTop": false,
+        "resizable": false,
+        "shadow": true,
+        "focus": true,
+        "skipTaskbar": false,
+        "visible": false,
+        "center": true
       }
     ],
     "security": {
