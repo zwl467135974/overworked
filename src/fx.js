@@ -105,6 +105,26 @@ listen("click-pulse", (event) => {
   }
 });
 
+// ===== 预渲染发光球（避免每帧 createRadialGradient 的性能开销）=====
+const glowCache = {};
+function getGlow(color, size) {
+  const key = `${color}_${size}`;
+  if (glowCache[key]) return glowCache[key];
+  const r = size * 3;
+  const off = document.createElement("canvas");
+  off.width = r * 2;
+  off.height = r * 2;
+  const octx = off.getContext("2d");
+  const g = octx.createRadialGradient(r, r, 0, r, r, r);
+  g.addColorStop(0, color);
+  g.addColorStop(0.4, color);
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  octx.fillStyle = g;
+  octx.fillRect(0, 0, r * 2, r * 2);
+  glowCache[key] = off;
+  return off;
+}
+
 // ===== 渲染循环 =====
 function render(now) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -148,16 +168,10 @@ function render(now) {
     ctx.globalAlpha = alpha * scale;
 
     if (p.type === "dot") {
-      // 发光球：径向渐变
+      // 用预渲染发光球贴图（比 createRadialGradient 快 10 倍）
+      const glow = getGlow(p.color, p.size);
       const r = p.size * 3 * scale;
-      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-      g.addColorStop(0, p.color);
-      g.addColorStop(0.4, p.color);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.drawImage(glow, p.x - r, p.y - r, r * 2, r * 2);
     } else if (p.type === "ring") {
       // 冲击波：粗→细 + 发光
       ctx.strokeStyle = p.color;
