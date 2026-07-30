@@ -279,6 +279,12 @@ fn emit_cult_events(app: &tauri::AppHandle, events: &[CultEvent]) {
                 }
                 let _ = app.emit("cult-ascension", ());
                 let _ = app.emit("bubble-show", "飞升！！");
+                // 重建托盘菜单（加「复活」项，因为桌宠已隐，只能从托盘恢复）
+                if let Some(tray) = app.tray_by_id("main-tray") {
+                    if let Ok(menu) = state_menu(app, false) {
+                        let _ = tray.set_menu(Some(menu));
+                    }
+                }
             }
         }
     }
@@ -358,6 +364,11 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
     let already_cult = app
         .try_state::<AppState>()
         .and_then(|s| s.save.lock().ok().map(|sv| sv.load_events().cultivation_mode))
+        .unwrap_or(false);
+    // 是否已飞升（飞升后桌宠隐藏，托盘需提供恢复入口）
+    let ascended = app
+        .try_state::<AppState>()
+        .and_then(|s| s.save.lock().ok().map(|sv| sv.load_events().cultivation_realm >= 6))
         .unwrap_or(false);
     let shop_label = if already_cult || savings >= 500.0 {
         "商店 / 修仙"
@@ -456,6 +467,12 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
         let cult_item = cult_submenu.build()?;
 
         builder = builder.item(&sep).item(&preview_item).item(&cult_item);
+    }
+
+    // 飞升后：托盘菜单显示「复活」（桌宠已隐藏，只能从托盘恢复）
+    if ascended {
+        let revive = MenuItem::with_id(app, "cult:revive", "🔄 复活（恢复桌宠）", true, None::<&str>)?;
+        builder = builder.item(&sep).item(&revive);
     }
 
     if !skins.is_empty() {
@@ -1020,6 +1037,12 @@ pub fn run() {
                         let _ = app_handle.emit("debug-revive", ());
                         let _ = app_handle.emit("bubble-show", "（调试）复活了！");
                         push_stats_and_cult(&app_handle, &state);
+                        // 重建托盘菜单（移除「复活」项，因为已恢复）
+                        if let Some(tray) = app_handle.tray_by_id("main-tray") {
+                            if let Ok(menu) = state_menu(&app_handle, false) {
+                                let _ = tray.set_menu(Some(menu));
+                            }
+                        }
                     }
                     _ if id.starts_with("cult:realm:") => {
                         // 调试：设境界（同时开启修仙模式），验证各阶段光环
