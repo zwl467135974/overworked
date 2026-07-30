@@ -427,7 +427,34 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
             .item(&evt_pomodoro).item(&evt_hospital).item(&evt_discharge);
         let preview_item = preview_submenu.build()?;
 
-        builder = builder.item(&sep).item(&preview_item);
+        // 修仙调试子菜单
+        let mut cult_submenu = SubmenuBuilder::new(app, "修仙调试");
+        let cult_label = MenuItem::with_id(app, "cult_label", "— 彩蛋/模式 —", false, None::<&str>)?;
+        let cult_milestone = MenuItem::with_id(app, "cult:mavings_milestone", "触发存500彩蛋", true, None::<&str>)?;
+        let cult_on = MenuItem::with_id(app, "cult:on", "开启修仙模式", true, None::<&str>)?;
+        let cult_off = MenuItem::with_id(app, "cult:off", "关闭修仙模式", true, None::<&str>)?;
+        let sep_cult = PredefinedMenuItem::separator(app)?;
+        let realm_label = MenuItem::with_id(app, "realm_label", "— 设境界（验证光环）—", false, None::<&str>)?;
+        cult_submenu = cult_submenu
+            .item(&cult_label)
+            .item(&cult_milestone).item(&cult_on).item(&cult_off)
+            .item(&sep_cult).item(&realm_label);
+        let realm_names = ["凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升"];
+        for (i, name) in realm_names.iter().enumerate() {
+            let item = MenuItem::with_id(app, format!("cult:realm:{i}"), format!("{i}. {name}"), true, None::<&str>)?;
+            cult_submenu = cult_submenu.item(&item);
+        }
+        let sep_cult2 = PredefinedMenuItem::separator(app)?;
+        let fx_label = MenuItem::with_id(app, "fx_label", "— 触发特效 —", false, None::<&str>)?;
+        let cult_realmup = MenuItem::with_id(app, "cult:realmup", "突破金光", true, None::<&str>)?;
+        let cult_dev = MenuItem::with_id(app, "cult:deviation", "走火入魔", true, None::<&str>)?;
+        let cult_asc = MenuItem::with_id(app, "cult:ascension", "飞升结局", true, None::<&str>)?;
+        cult_submenu = cult_submenu
+            .item(&sep_cult2).item(&fx_label)
+            .item(&cult_realmup).item(&cult_dev).item(&cult_asc);
+        let cult_item = cult_submenu.build()?;
+
+        builder = builder.item(&sep).item(&preview_item).item(&cult_item);
     }
 
     if !skins.is_empty() {
@@ -933,6 +960,87 @@ pub fn run() {
                             let pet = state.state.lock().unwrap();
                             pet.to_stats_payload()
                         });
+                    }
+                    "cult:mavings_milestone" => {
+                        // 调试：直接触发存500彩蛋（不管实际存款）
+                        let _ = app_handle.emit("savings-milestone", ());
+                        let _ = app_handle.emit("bubble-show", "灵石满500…似乎触碰到了什么…右键看看？");
+                        // 标记已触发 + 重建托盘菜单
+                        let state = app_handle.state::<AppState>();
+                        if let Ok(mut save) = state.save.lock() {
+                            let mut ev = save.load_events();
+                            ev.savings_milestone_shown = true;
+                            let _ = save.save_events(&ev);
+                        }
+                        if let Some(tray) = app_handle.tray_by_id("main-tray") {
+                            if let Ok(menu) = state_menu(&app_handle, false) {
+                                let _ = tray.set_menu(Some(menu));
+                            }
+                        }
+                    }
+                    "cult:on" => {
+                        // 调试：直接开启修仙模式（不扣500）
+                        let state = app_handle.state::<AppState>();
+                        {
+                            let mut save = state.save.lock().unwrap();
+                            let mut ev = save.load_events();
+                            ev.cultivation_mode = true;
+                            if ev.cultivation_realm == 0 { ev.cultivation_realm = 1; }
+                            let _ = save.save_events(&ev);
+                        }
+                        let _ = app_handle.emit("cultivation-on", ());
+                        let _ = app_handle.emit("bubble-show", "（调试）踏入修仙之路…");
+                        push_stats_and_cult(&app_handle, &state);
+                    }
+                    "cult:off" => {
+                        let state = app_handle.state::<AppState>();
+                        {
+                            let mut save = state.save.lock().unwrap();
+                            let mut ev = save.load_events();
+                            ev.cultivation_mode = false;
+                            let _ = save.save_events(&ev);
+                        }
+                        let _ = app_handle.emit("cultivation-off", ());
+                        let _ = app_handle.emit("bubble-show", "（调试）切回普通模式");
+                        push_stats_and_cult(&app_handle, &state);
+                    }
+                    _ if id.starts_with("cult:realm:") => {
+                        // 调试：设境界（同时开启修仙模式），验证各阶段光环
+                        let realm: i64 = id[11..].parse().unwrap_or(0);
+                        let state = app_handle.state::<AppState>();
+                        {
+                            let mut save = state.save.lock().unwrap();
+                            let mut ev = save.load_events();
+                            ev.cultivation_mode = true;
+                            ev.cultivation_realm = realm;
+                            ev.cultivation_exp = 50.0;
+                            let _ = save.save_events(&ev);
+                        }
+                        let _ = app_handle.emit("cultivation-on", ());
+                        let _ = app_handle.emit("bubble-show", format!("（调试）境界：{}", realm_name(realm)));
+                        push_stats_and_cult(&app_handle, &state);
+                    }
+                    "cult:realmup" => {
+                        // 调试：触发突破金光特效
+                        if let Some(fx_win) = app_handle.get_webview_window("fx-overlay") {
+                            let _ = fx_win.show();
+                        }
+                        let _ = app_handle.emit("realm-up", 3);
+                        let _ = app_handle.emit("bubble-show", "（调试）突破金光特效");
+                    }
+                    "cult:deviation" => {
+                        if let Some(fx_win) = app_handle.get_webview_window("fx-overlay") {
+                            let _ = fx_win.show();
+                        }
+                        let _ = app_handle.emit("cult-deviation", ());
+                        let _ = app_handle.emit("bubble-show", "（调试）走火入魔特效");
+                    }
+                    "cult:ascension" => {
+                        if let Some(fx_win) = app_handle.get_webview_window("fx-overlay") {
+                            let _ = fx_win.show();
+                        }
+                        let _ = app_handle.emit("cult-ascension", ());
+                        let _ = app_handle.emit("bubble-show", "（调试）飞升结局特效");
                     }
                     _ => {}
                 }
