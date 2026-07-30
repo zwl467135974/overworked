@@ -416,6 +416,97 @@ listen("drag-ended", async () => {
   }
 });
 
+// ===== 修仙境界光环（程序化绘制，不依赖美术） =====
+// 在桌宠本体绘制后叠加，跟随 translate/scale 变换。
+// 调用时 ctx 已 translate 到桌宠中心（原点），绘制坐标以原点为参考。
+// now 用于动画（金丹旋转/光环呼吸）。
+// 注意：这里手动叠加光效，不依赖 ctx.filter（filter 已被表情层占用）。
+function drawRealmAura(now) {
+  if (!cultMode || cultRealm < 1) return;
+  const t = now / 1000; // 秒
+
+  // 练气(1)+：周身青色微光（加法混合的柔和光晕）
+  if (cultRealm >= 1) {
+    ctx.globalCompositeOperation = "lighter";
+    const breath = 0.6 + Math.sin(t * 2) * 0.15; // 呼吸
+    const r = 42;
+    const g = ctx.createRadialGradient(0, 0, 10, 0, 0, r);
+    g.addColorStop(0, `rgba(120, 230, 200, ${0.18 * breath})`);
+    g.addColorStop(0.6, `rgba(80, 200, 170, ${0.08 * breath})`);
+    g.addColorStop(1, "rgba(80, 200, 170, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // 筑基(2)+：灵体半透明（本体已画，这里再罩一层淡蓝降低不透明感）
+  if (cultRealm >= 2) {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = "rgba(150, 220, 255, 0.06)";
+    ctx.beginPath();
+    ctx.arc(0, 4, 36, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // 金丹(3)+：胸口金丹（旋转的小金球 + 光晕）
+  if (cultRealm >= 3) {
+    ctx.globalCompositeOperation = "lighter";
+    const danX = 0;
+    const danY = 6; // 胸口位置（原点下方）
+    // 金光晕
+    const g = ctx.createRadialGradient(danX, danY, 0, danX, danY, 12);
+    g.addColorStop(0, "rgba(255, 215, 0, 0.9)");
+    g.addColorStop(0.5, "rgba(255, 180, 0, 0.4)");
+    g.addColorStop(1, "rgba(255, 180, 0, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(danX, danY, 12, 0, Math.PI * 2);
+    ctx.fill();
+    // 金丹本体（旋转的高光点）
+    const spin = t * 3;
+    ctx.fillStyle = "#fff3c4";
+    ctx.beginPath();
+    ctx.arc(danX + Math.cos(spin) * 2, danY + Math.sin(spin) * 2, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // 元婴(4)+：头顶光环（金色环 + 呼吸缩放）
+  if (cultRealm >= 4) {
+    ctx.globalCompositeOperation = "lighter";
+    const haloY = -32; // 头顶（原点上方）
+    const breath = 1 + Math.sin(t * 2.5) * 0.08;
+    ctx.strokeStyle = "rgba(255, 215, 0, 0.85)";
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = "#ffd700";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.ellipse(0, haloY, 14 * breath, 5 * breath, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // 化神(5)：全身金光（强光晕 + 悬浮微动由 bounce 表达，这里加金光）
+  if (cultRealm >= 5) {
+    ctx.globalCompositeOperation = "lighter";
+    const breath = 0.7 + Math.sin(t * 1.5) * 0.2;
+    const r = 50;
+    const g = ctx.createRadialGradient(0, 0, 15, 0, 0, r);
+    g.addColorStop(0, `rgba(255, 230, 120, ${0.25 * breath})`);
+    g.addColorStop(0.5, `rgba(255, 200, 50, ${0.12 * breath})`);
+    g.addColorStop(1, "rgba(255, 200, 50, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+  }
+}
+
 function render(now) {
   // 飞升结局：接管渲染（金光+上升+淡出）
   if (ascensionActive) {
@@ -497,6 +588,10 @@ function render(now) {
     bounceDx = b.dx;
     bounceDy = b.dy;
   }
+  // 化神(5)+：悬浮（脱离地面，缓慢上下浮动）
+  if (cultMode && cultRealm >= 5) {
+    bounceDy += Math.sin(now / 600) * 3 - 4; // 基线抬高4px + 浮动±3
+  }
   ctx.filter = filterStr;
 
   if (imgToDraw && imgToDraw.complete && imgToDraw.naturalWidth > 0) {
@@ -515,6 +610,8 @@ function render(now) {
     const dh = 96;
     const dw = iw * (dh / ih);
     ctx.drawImage(imgToDraw, -dw / 2, -dh / 2, dw, dh);
+    // 修仙境界光环（叠加在本体上，跟随变换）
+    drawRealmAura(now);
     ctx.restore();
   } else {
     // 帧未加载完，画占位
@@ -1053,6 +1150,7 @@ const cultRealmEl = document.getElementById("cult-realm");
 const barExp = document.getElementById("bar-exp");
 const statsPanel = document.getElementById("stats-panel");
 let cultMode = false;
+let cultRealm = 0; // 当前境界 0-6（render 循环读取，画光环/金丹等）
 const REALM_NAMES = ["凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升"];
 
 // 修仙面板更新（tick 推送 + 商店购买后推送）
@@ -1069,6 +1167,7 @@ listen("cultivation-update", (event) => {
     statsPanel.hidden = false;
     cultPanel.hidden = true;
   }
+  cultRealm = c.realm || 0;
   if (cultMode) {
     if (cultRealmEl) cultRealmEl.textContent = REALM_NAMES[c.realm] || "凡人";
     if (barExp) barExp.style.width = `${Math.max(0, Math.min(100, c.exp))}%`;
