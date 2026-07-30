@@ -764,6 +764,17 @@ pub fn run() {
                 });
             }
 
+            // 商店窗口：点 X 关闭时只隐藏不销毁（否则关一次就拿不到窗口了）
+            if let Some(shop_win) = app.get_webview_window("shop") {
+                let shop_clone = shop_win.clone();
+                shop_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close(); // 阻止销毁
+                        let _ = shop_clone.hide(); // 改为隐藏，下次还能 show
+                    }
+                });
+            }
+
             // 右键菜单事件路由
             let app_handle = app.handle().clone();
             app.on_menu_event(move |_handle, event| {
