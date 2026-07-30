@@ -281,7 +281,16 @@ async function doFall(screenH, scaleFactor) {
 
 /** 落地后沿底边左右走一段 */
 function strollOnGround(startX, groundY, screenW, scaleFactor) {
-  const dir = Math.random() < 0.5 ? 1 : -1;
+  const winW_phys = WIN_W * scaleFactor;
+  // 智能选方向：靠右走左，靠左走右，中间随机
+  let dir;
+  if (startX > screenW - winW_phys - 100) {
+    dir = -1; // 靠右了，往左走
+  } else if (startX < 100) {
+    dir = 1; // 靠左了，往右走
+  } else {
+    dir = Math.random() < 0.5 ? 1 : -1;
+  }
   const distance = Math.round((80 + Math.random() * 120) * scaleFactor);
   let x = startX;
   let traveled = 0;
@@ -293,7 +302,8 @@ function strollOnGround(startX, groundY, screenW, scaleFactor) {
     const step = Math.round(3 * scaleFactor);
     x += dir * step;
     traveled += step;
-    if (x < 0 || x > screenW - WIN_W * scaleFactor || traveled > distance) {
+    // 边界检测：留足窗口宽度，确保整个窗口不出屏
+    if (x < 0 || x > screenW - winW_phys || traveled > distance) {
       clearInterval(physicsTimer);
       physicsTimer = null;
       endHoldAction();
