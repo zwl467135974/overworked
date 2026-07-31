@@ -818,12 +818,13 @@ pub fn run() {
                         let _ = app_handle.emit("cultivation-update", cult);
                     }
                     // 周期 emit 桌宠位置给 fx-overlay（逻辑坐标，fx-overlay 自己转物理坐标）
+                    // canvas 120×140 在 left:20 bottom:0，中心 = (20+60, 200-140+56) = (80, 116)
                     if let Some(main_win) = app_handle.get_webview_window("main") {
                         if let Ok(pos) = main_win.outer_position() {
                             if let Ok(scale) = main_win.scale_factor() {
                                 let _ = app_handle.emit(
                                     "pet-position",
-                                    (pos.x as f64 / scale + 80.0, pos.y as f64 / scale + 100.0),
+                                    (pos.x as f64 / scale + 80.0, pos.y as f64 / scale + 116.0),
                                 );
                             }
                         }

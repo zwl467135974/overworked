@@ -24,14 +24,14 @@ body {
   position: relative;
 }
 
-/* 像素角色 Canvas：钉在窗口底部居中（视觉上的"角落小生物"） */
+/* 像素角色 Canvas：钉在窗口底部居中（120×140，给坐骑留下方空间） */
 #pet {
   position: absolute;
-  /* 底部居中：窗口 160 宽，Canvas 96 宽，左边距 (160-96)/2 = 32 */
-  left: 32px;
+  /* 底部居中：窗口 160 宽，Canvas 120 宽，左边距 (160-120)/2 = 20 */
+  left: 20px;
   bottom: 0;
-  width: 96px;
-  height: 96px;
+  width: 120px;
+  height: 140px;
   /* 不用 -webkit-app-region: drag（会吞 mousedown，无法检测单击 poke）。
      拖动改用 JS 的 startDragging()，与单击分离。 */
   image-rendering: pixelated;

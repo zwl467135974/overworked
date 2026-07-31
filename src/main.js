@@ -1159,7 +1159,7 @@ function render(now) {
   }
 
   // 渲染
-  ctx.clearRect(0, 0, 96, 96);
+  ctx.clearRect(0, 0, 120, 140);
   ctx.globalAlpha = currentPayload.opacity;
 
   // 叠加特效（仅状态动作期间；一次性动作暂停特效，动作本身已表达情绪）
@@ -1188,7 +1188,8 @@ function render(now) {
 
   if (imgToDraw && imgToDraw.complete && imgToDraw.naturalWidth > 0) {
     ctx.save();
-    ctx.translate(48 + bounceDx, 48 + bounceDy);
+    // 中心点：X=60(居中), Y=56(略偏上，给坐骑留下方空间)
+    ctx.translate(60 + bounceDx, 56 + bounceDy);
     // walk 朝左时水平镜像（一套朝右帧，双向走）
     if (oneShotAction === "walk" && walkDir < 0) {
       ctx.scale(-1, 1);
@@ -1198,13 +1199,13 @@ function render(now) {
     }
     // 坐骑：在本体之前画 = 在桌宠身后/下方
     drawMount(now);
-    // 按图片实际尺寸等比缩放到高度96，居中显示（支持任意尺寸帧）
+    // 按图片实际尺寸等比缩放到高度80，居中显示（缩小本体给坐骑留空间）
     const iw = imgToDraw.naturalWidth || 64;
     const ih = imgToDraw.naturalHeight || 64;
-    const dh = 96;
+    const dh = 80;
     const dw = iw * (dh / ih);
     // 有坐骑时桌宠整体上移（坐在坐骑上）
-    const mountLift = currentMount > 0 ? -6 : 0;
+    const mountLift = currentMount > 0 ? -8 : 0;
     ctx.drawImage(imgToDraw, -dw / 2, -dh / 2 + mountLift, dw, dh);
     // 修仙境界光环（叠加在本体上，跟随变换）
     drawRealmAura(now);
@@ -1212,7 +1213,7 @@ function render(now) {
   } else {
     // 帧未加载完，画占位
     ctx.fillStyle = "#6b7280";
-    ctx.fillRect(0, 0, 96, 96);
+    ctx.fillRect(0, 0, 120, 140);
   }
 
   ctx.filter = "none";
@@ -1863,7 +1864,7 @@ function renderAscension(now) {
   const PHASE_FLOAT = 4000;  // 1.5-4s：上升淡出
   const PHASE_DONE = 4200;   // 4.2s：完全消失
 
-  ctx.clearRect(0, 0, 96, 96);
+  ctx.clearRect(0, 0, 120, 140);
 
   let opacity = 1;
   let brightness = 1;
@@ -1888,9 +1889,9 @@ function renderAscension(now) {
     ctx.filter = `brightness(${brightness}) drop-shadow(0 0 ${8 + brightness * 4}px #ffd700)`;
     const iw = img.naturalWidth || 64;
     const ih = img.naturalHeight || 64;
-    const dh = 96;
+    const dh = 80;
     const dw = iw * (dh / ih);
-    ctx.translate(48, 48 + liftY);
+    ctx.translate(60, 56 + liftY);
     ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();
   }
