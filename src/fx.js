@@ -6,10 +6,43 @@
 
 const { listen } = window.__TAURI__.event;
 const { getCurrentWindow } = window.__TAURI__.window;
+const { invoke } = window.__TAURI__.core;
 const win = getCurrentWindow();
 
 const canvas = document.getElementById("fx-canvas");
 const ctx = canvas.getContext("2d");
+
+// ===== 法术图标缓存（当前皮肤的 spells/ 图） =====
+let spellIcons = {}; // { "fireball": Image, ... }
+let currentSkinName = "default";
+
+async function loadSpellIcons() {
+  spellIcons = {};
+  try {
+    const skins = await invoke("list_skins");
+    const info = skins.find((s) => s.name === currentSkinName) || skins[0];
+    if (!info || !info.spells) return;
+    for (const s of info.spells) {
+      const dataUrl = await invoke("read_skin_asset", { skin: info.name, category: "spells", name: s });
+      if (dataUrl) {
+        const img = new Image();
+        img.onload = () => { spellIcons[s] = img; };
+        img.src = dataUrl;
+      }
+    }
+    console.log(`[fx] 加载 ${info.spells.length} 个法术图标`);
+  } catch (e) {
+    console.warn("[fx] 法术图标加载失败", e);
+  }
+}
+
+// 皮肤切换时重新加载法术图标
+listen("skin-switched", (event) => {
+  currentSkinName = event.payload || "default";
+  loadSpellIcons();
+});
+// 启动时加载一次
+loadSpellIcons();
 
 function resize() {
   canvas.width = window.innerWidth;
@@ -41,6 +74,17 @@ let flashAlpha = 0;
 function spawnDot(x, y, vx, vy, color, size, life, gravity) {
   if (particles.length > 60) return;
   particles.push({ type: "dot", x, y, vx, vy, color, size: size || 3, life: life || 350, gravity: gravity || 0.1, born: performance.now() });
+}
+// 法术图标粒子（贴图绘制，旋转可选）。有图标用图标，无则 fallback 到 spawnDot。
+function spawnSpellParticle(spell, x, y, vx, vy, size, life, gravity, rotation) {
+  const img = spellIcons[spell];
+  if (img && img.complete && img.naturalWidth > 0) {
+    if (particles.length > 60) return;
+    particles.push({ type: "icon", img, x, y, vx, vy, size: size || 16, life: life || 600, gravity: gravity || 0.05, rotation: rotation || 0, spin: (Math.random() - 0.5) * 0.2, born: performance.now() });
+  } else {
+    // fallback：通用发光球
+    spawnDot(x, y, vx, vy, "#ffaa00", (size || 16) / 4, life, gravity);
+  }
 }
 function spawnRing(x, y, color, vrad, life, lineWidth) {
   if (particles.length > 60) return;
@@ -245,19 +289,22 @@ function spellFireball(cx, cy) {
   // 初始大爆裂
   spawnRing(cx, cy, "#ff6600", 4, 500, 8);
   setTimeout(() => spawnRing(cx, cy, "#ffaa00", 5, 450, 6), 100);
-  // 30 颗火焰粒子向外炸开
-  for (let i = 0; i < 30; i++) {
-    const angle = (Math.PI * 2 * i) / 30 + Math.random() * 0.3;
-    const speed = 3 + Math.random() * 5;
-    const color = Math.random() < 0.5 ? "#ff4400" : "#ffaa00";
-    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 1, color, 4, 800, 0.05);
+  // 火球图标向外炸开（有图标用图标，无则发光球）
+  for (let i = 0; i < 12; i++) {
+    const angle = (Math.PI * 2 * i) / 12 + Math.random() * 0.3;
+    const speed = 3 + Math.random() * 4;
+    spawnSpellParticle("fireball", cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 1, 18, 800, 0.05, Math.random() * Math.PI);
   }
-  // 持续余火（0.5s/1s 再补两波）
+  // 辅助火焰粒子（通用发光球，填充密度）
+  for (let i = 0; i < 18; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 1, "#ff6600", 3, 700, 0.05);
+  }
   setTimeout(() => {
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 10; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 2 + Math.random() * 3;
-      spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 2, "#ff6600", 3, 600, 0.04);
+      spawnSpellParticle("fireball", cx, cy, Math.cos(angle) * 3, Math.sin(angle) * 3 - 2, 14, 600, 0.04, Math.random() * Math.PI);
     }
   }, 500);
   shakeAmp = 8;
@@ -266,21 +313,20 @@ function spellFireball(cx, cy) {
 
 // 冰封术：蓝白冰晶绽放 + 多层霜冻扩散环（2s）
 function spellIce(cx, cy) {
-  // 5 层冰霜环（蓝白渐变，慢扩散）
   for (let i = 0; i < 5; i++) {
     setTimeout(() => {
       const color = i % 2 === 0 ? "#a0e0ff" : "#ffffff";
       spawnRing(cx, cy, color, 2 + i * 0.5, 800, 5 - i * 0.5);
     }, i * 200);
   }
-  // 20 颗冰晶粒子（六角散射，缓慢飘散）
-  for (let i = 0; i < 20; i++) {
-    const angle = (Math.PI * 2 * i) / 20;
+  // 冰晶图标散射（有图标用图标，无则发光球）
+  for (let i = 0; i < 12; i++) {
+    const angle = (Math.PI * 2 * i) / 12;
     const speed = 2 + Math.random() * 2;
-    spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, "#c0eaff", 3, 1200, -0.01);
+    spawnSpellParticle("ice", cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, 16, 1200, -0.01, Math.random() * Math.PI);
   }
-  // 冰雾（低速下沉的白雾）
-  for (let i = 0; i < 10; i++) {
+  // 辅助冰雾粒子
+  for (let i = 0; i < 12; i++) {
     const ox = (Math.random() - 0.5) * 60;
     spawnDot(cx + ox, cy, (Math.random() - 0.5) * 0.5, 1 + Math.random(), "rgba(200,230,255,0.6)", 4, 1500, 0.01);
   }
@@ -289,10 +335,8 @@ function spellIce(cx, cy) {
 
 // 雷劫术：紫白闪电从顶部劈下 + 电弧分支 + 强震（2.5s）
 function spellThunder(cx, cy) {
-  // 3 道闪电从屏幕顶部劈到桌宠位置（错峰）
   for (let flash = 0; flash < 3; flash++) {
     setTimeout(() => {
-      // 主闪电（锯齿线，用粒子模拟）
       const topY = 0;
       const steps = 12;
       let prevX = cx + (Math.random() - 0.5) * 100;
@@ -300,16 +344,18 @@ function spellThunder(cx, cy) {
       for (let s = 1; s <= steps; s++) {
         const nx = cx + (Math.random() - 0.5) * 40;
         const ny = topY + (cy - topY) * (s / steps);
-        // 沿路径生成发光粒子
+        // 闪电图标沿路径散布（有图标用图标，无则发光粒子）
+        if (s % 3 === 0) {
+          spawnSpellParticle("thunder", prevX, prevY, 0, 0, 14, 300, 0, Math.random() * Math.PI);
+        }
         for (let p = 0; p < 3; p++) {
-          const t = p / 3;
-          const px = prevX + (nx - prevX) * t;
-          const py = prevY + (ny - prevY) * t;
+          const tp = p / 3;
+          const px = prevX + (nx - prevX) * tp;
+          const py = prevY + (ny - prevY) * tp;
           spawnDot(px, py, 0, 0, flash === 1 ? "#ffffff" : "#c080ff", 4, 300, 0);
         }
         prevX = nx; prevY = ny;
       }
-      // 落地爆裂
       spawnRing(cx, cy, "#c080ff", 4, 400, 6);
       for (let i = 0; i < 12; i++) {
         const angle = Math.random() * Math.PI * 2;
@@ -324,32 +370,29 @@ function spellThunder(cx, cy) {
 
 // 万剑诀：数十把光剑从天降下 + 金光绽放（3s）
 function spellSwords(cx, cy) {
-  // 3 波剑雨（每波 12 把）
   for (let wave = 0; wave < 3; wave++) {
     setTimeout(() => {
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 8; i++) {
         const sx = cx + (Math.random() - 0.5) * 200;
         const sy = 0 - Math.random() * 100;
         const tx = cx + (Math.random() - 0.5) * 80;
         const ty = cy + (Math.random() - 0.5) * 40;
-        // 用 symbol 画剑（下落动画）
-        if (symbols.length < 30) {
-          const dx = tx - sx;
-          const dy = ty - sy;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          symbols.push({
-            text: "╫", x: sx, y: sy,
-            vx: dx / dist * 8, vy: dy / dist * 8,
-            color: "#ffd700", life: 600, gravity: 0,
-            born: performance.now(),
-          });
+        const dx = tx - sx;
+        const dy = ty - sy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const vx = dx / dist * 8;
+        const vy = dy / dist * 8;
+        // 光剑图标下落（有图标用图标，无则用 ╫ 符号）
+        const swordImg = spellIcons["swords"];
+        if (swordImg && swordImg.complete) {
+          spawnSpellParticle("swords", sx, sy, vx, vy, 20, 600, 0, Math.atan2(vy, vx) + Math.PI / 2);
+        } else if (symbols.length < 30) {
+          symbols.push({ text: "╫", x: sx, y: sy, vx, vy, color: "#ffd700", life: 600, gravity: 0, born: performance.now() });
         }
       }
-      // 每波落地金光
       spawnRing(cx, cy, "#ffd700", 4, 500, 5);
     }, wave * 700);
   }
-  // 中心金光绽放
   spawnRing(cx, cy, "#ffffff", 6, 1000, 8);
   shakeAmp = 10;
   flashAlpha = 0.15;
@@ -366,26 +409,33 @@ function spellArmageddon(cx, cy) {
         const ox = (Math.random() - 0.5) * 30;
         spawnDot(cx + ox, cy, (Math.random() - 0.5) * 1, -6 - Math.random() * 4, colors[c], 4, 1500, -0.02);
       }
+      // 五色图标上升（有图标用图标，无则彩色粒子）
+      spawnSpellParticle("armageddon", cx + (Math.random() - 0.5) * 20, cy, (Math.random() - 0.5) * 1, -5, 24, 1500, -0.02, 0);
       // 彩色扩散环
       spawnRing(cx, cy, colors[c], 5, 800, 6);
     }, c * 300);
   }
   // 全屏彩色绽放（延迟 1.5s 后大爆发）
   setTimeout(() => {
-    for (let i = 0; i < 60; i++) {
+    // 五色图标四散
+    for (let i = 0; i < 12; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 4 + Math.random() * 5;
+      spawnSpellParticle("armageddon", cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, 28, 1500, 0.03, Math.random() * Math.PI);
+    }
+    // 彩色粒子填充
+    for (let i = 0; i < 48; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 4 + Math.random() * 6;
       const color = colors[Math.floor(Math.random() * colors.length)];
       spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, color, 4, 1500, 0.03);
     }
-    // 多层彩色环
     for (let c of colors) {
       spawnRing(cx, cy, c, 6, 1000, 7);
     }
     shakeAmp = 15;
     flashAlpha = 0.3;
   }, 1500);
-  // 初始震撼
   shakeAmp = 10;
   flashAlpha = 0.2;
 }
@@ -457,6 +507,8 @@ function render(now) {
       const glow = getGlow(p.color, p.size);
       const r = p.size * 3 * scale;
       ctx.drawImage(glow, p.x - r, p.y - r, r * 2, r * 2);
+    } else if (p.type === "icon") {
+      // 法术图标粒子：跳过 lighter 循环，单独渲染（见下方）
     } else if (p.type === "ring") {
       // 冲击波：粗→细 + 发光
       ctx.strokeStyle = p.color;
@@ -471,6 +523,27 @@ function render(now) {
     aliveP.push(p);
   }
   particles = aliveP;
+
+  // ===== 法术图标粒子（source-over，保留原图色彩）=====
+  ctx.globalCompositeOperation = "source-over";
+  for (const p of particles) {
+    if (p.type !== "icon") continue;
+    const age = now - p.born;
+    if (age >= p.life) continue;
+    const t = age / p.life;
+    const alpha = (1 - t) * (1 - t);
+    if (p.rotation !== undefined) p.rotation += p.spin || 0;
+    let scale = 1;
+    if (age < 60) { scale = age / 60; scale = 1 - (1 - scale) * (1 - scale); }
+    ctx.globalAlpha = alpha * scale;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (p.rotation) ctx.rotate(p.rotation);
+    const s = p.size * scale;
+    ctx.drawImage(p.img, -s / 2, -s / 2, s, s);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
 
   // 白闪（加法混合下叠加白色 = 过曝感）
   if (flashAlpha > 0.01) {

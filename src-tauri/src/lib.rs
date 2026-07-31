@@ -1053,8 +1053,12 @@ pub fn run() {
                         );
                     }
                     _ if id.starts_with("skin:") => {
-                        // 换皮肤：skin:<name>
+                        // 换皮肤：skin:<name>（持久化 + 通知前端）
                         let skin_name = id[5..].to_string();
+                        let state = app_handle.state::<AppState>();
+                        if let Ok(save) = state.save.lock() {
+                            let _ = save.set_setting("current_skin", &skin_name);
+                        }
                         let _ = app_handle.emit("skin-switched", &skin_name);
                     }
                     _ if id.starts_with("preview:") => {
@@ -1283,7 +1287,9 @@ pub fn run() {
             cast_spell,
             skin::list_skins,
             skin::read_skin_frame,
-            skin::switch_skin
+            skin::read_skin_asset,
+            skin::switch_skin,
+            skin::get_saved_skin
         ])
         .run(tauri::generate_context!())
         .expect("error while running overworked");

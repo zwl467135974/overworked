@@ -41,6 +41,8 @@ const EXPR_TO_ACTION = {
 let currentSkin = "default";
 let skinInfo = null; // { name, actions: { idle: {frames:3}, ... } }
 let frameCache = {}; // { "idle": [Image, Image, ...], "working": [...], ... }
+let mountCache = {}; // { "sword": Image, "dragon": Image, ... } 坐骑造型图（皮肤提供）
+let spellCache = {}; // { "fireball": Image, "ice": Image, ... } 法术图标（皮肤提供）
 
 /** 加载一个皮肤的所有帧（通过 Rust 读文件转 base64） */
 async function loadSkin(skinName) {
@@ -53,6 +55,8 @@ async function loadSkin(skinName) {
   skinInfo = info;
   currentSkin = info.name;
   frameCache = {};
+  mountCache = {};
+  spellCache = {};
 
   // 并行加载所有动作的所有帧
   const tasks = [];
@@ -72,8 +76,32 @@ async function loadSkin(skinName) {
       );
     }
   }
+  // 加载坐骑造型图（mounts/sword.png 等）
+  for (const m of (info.mounts || [])) {
+    tasks.push(
+      invoke("read_skin_asset", { skin: info.name, category: "mounts", name: m }).then((dataUrl) => {
+        if (dataUrl) {
+          const img = new Image();
+          img.onload = () => { mountCache[m] = img; };
+          img.src = dataUrl;
+        }
+      })
+    );
+  }
+  // 加载法术图标（spells/fireball.png 等）
+  for (const s of (info.spells || [])) {
+    tasks.push(
+      invoke("read_skin_asset", { skin: info.name, category: "spells", name: s }).then((dataUrl) => {
+        if (dataUrl) {
+          const img = new Image();
+          img.onload = () => { spellCache[s] = img; };
+          img.src = dataUrl;
+        }
+      })
+    );
+  }
   await Promise.all(tasks);
-  console.log(`[skin] 加载皮肤 ${info.name}：${Object.keys(info.actions).length} 个动作`);
+  console.log(`[skin] 加载皮肤 ${info.name}：${Object.keys(info.actions).length} 动作, ${(info.mounts||[]).length} 坐骑图, ${(info.spells||[]).length} 法术图`);
 }
 
 /** 取某动作的帧序列（缺失 fallback 到 idle） */
@@ -416,23 +444,73 @@ listen("drag-ended", async () => {
   }
 });
 
-// ===== 修仙坐骑（程序化绘制，画在桌宠下方/身后） =====
+// ===== 修仙坐骑（图优先，程序后备） =====
 // 调用时 ctx 已 translate 到桌宠中心（原点 0,0），正 Y 向下。
 // 在 drawImage(本体) 之前调用 = 坐骑在桌宠身后/下方。
-// now 用于动画（翅膀拍动/龙游动/剑光拖尾）。
+// 有皮肤图 → drawImage + 程序动画层（浮动/发光/拖尾）
+// 无皮肤图 → fallback 到程序绘制（飞剑/葫芦/龙等完整代码）
 function drawMount(now) {
   if (!cultMode || currentMount < 1) return;
   const t = now / 1000;
-  ctx.globalCompositeOperation = "lighter";
+  const mountKeys = ["", "sword", "gourd", "dragon", "qilin", "phoenix"];
+  const key = mountKeys[currentMount];
+  const skinImg = key ? mountCache[key] : null;
 
-  switch (currentMount) {
-    case 1: drawMountSword(t); break;
-    case 2: drawMountGourd(t); break;
-    case 3: drawMountDragon(t); break;
-    case 4: drawMountQilin(t); break;
-    case 5: drawMountPhoenix(t); break;
+  ctx.globalCompositeOperation = "lighter";
+  if (skinImg && skinImg.complete && skinImg.naturalWidth > 0) {
+    // ===== 皮肤图优先：画静态坐骑 + 程序动画层 =====
+    drawMountFromImage(skinImg, currentMount, t);
+  } else {
+    // ===== fallback：程序绘制 =====
+    switch (currentMount) {
+      case 1: drawMountSword(t); break;
+      case 2: drawMountGourd(t); break;
+      case 3: drawMountDragon(t); break;
+      case 4: drawMountQilin(t); break;
+      case 5: drawMountPhoenix(t); break;
+    }
   }
   ctx.globalCompositeOperation = "source-over";
+}
+
+// 皮肤坐骑图绘制：静态图居中底部 + 程序叠加动画（浮动/发光/拖尾）
+function drawMountFromImage(img, mountId, t) {
+  const y = 38;
+  const float = Math.sin(t * 1.5) * 1.5;
+  // 按图片等比缩放到宽 64（坐骑图比角色宽），居中底部
+  const iw = img.naturalWidth || 64;
+  const ih = img.naturalHeight || 32;
+  const dw = 64;
+  const dh = ih * (dw / iw);
+  // 底部发光层（所有坐骑通用：脚下灵光）
+  const glow = ctx.createRadialGradient(0, y + 6, 0, 0, y + 6, 30);
+  glow.addColorStop(0, "rgba(255,230,150,0.25)");
+  glow.addColorStop(1, "rgba(255,200,100,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.ellipse(0, y + 6, 30, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 坐骑图（source-over 保证图片原色，不走加法混合）
+  ctx.globalCompositeOperation = "source-over";
+  ctx.drawImage(img, -dw / 2, y - dh / 2 + 4 + float, dw, dh);
+  ctx.globalCompositeOperation = "lighter";
+  // 顶部高光叠加（轻微发光感）
+  const top = ctx.createRadialGradient(0, y - 4 + float, 0, 0, y - 4 + float, dw / 2);
+  top.addColorStop(0, "rgba(255,255,200,0.15)");
+  top.addColorStop(1, "rgba(255,255,200,0)");
+  ctx.fillStyle = top;
+  ctx.beginPath();
+  ctx.ellipse(0, y - 4 + float, dw / 2, dh / 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 灵气粒子（2颗上飘）
+  for (let i = 0; i < 2; i++) {
+    const px = (Math.random() - 0.5) * 30;
+    const py = y + 2 + float + Math.sin(t * 2 + i) * 3;
+    ctx.fillStyle = "rgba(255,230,150,0.3)";
+    ctx.beginPath();
+    ctx.arc(px, py, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // 1. 飞剑：银白剑身横置脚下 + 灵光拖尾
@@ -1831,5 +1909,7 @@ function renderAscension(now) {
 }
 
 // ===== 启动（顶层 await，target=esnext 支持） =====
-await loadSkin("default");
+// 从存档恢复上次使用的皮肤（不存在则 default）
+const savedSkin = await invoke("get_saved_skin").catch(() => "default");
+await loadSkin(savedSkin);
 requestAnimationFrame(render);

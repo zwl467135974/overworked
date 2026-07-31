@@ -59,7 +59,16 @@ pub struct SkinInfo {
     /// 该皮肤下所有动作的帧数映射。
     /// key = 动作名，value = 帧数。缺失的动作不会出现在这里（前端 fallback 到 idle）。
     pub actions: BTreeMap<String, ActionInfo>,
+    /// 拥有的坐骑造型图列表（mounts/sword.png 等的文件名，不含扩展名）
+    pub mounts: Vec<String>,
+    /// 拥有的法术图标列表（spells/fireball.png 等的文件名，不含扩展名）
+    pub spells: Vec<String>,
 }
+
+/// 坐骑名（5 种，对应 mount_id 1-5）
+pub const MOUNT_KEYS: &[&str] = &["sword", "gourd", "dragon", "qilin", "phoenix"];
+/// 法术名（5 种）
+pub const SPELL_KEYS: &[&str] = &["fireball", "ice", "thunder", "swords", "armageddon"];
 
 /// 获取 skins 目录的绝对路径。
 /// dev：项目根/skins（cwd 可能是 src-tauri，需向上找）
@@ -122,6 +131,36 @@ fn scan_skin(skin_path: &Path) -> BTreeMap<String, ActionInfo> {
     actions
 }
 
+/// 扫描皮肤目录下 mounts/ 子目录，返回拥有的坐骑造型图名列表。
+fn scan_mounts(skin_path: &Path) -> Vec<String> {
+    let mut mounts = Vec::new();
+    let mounts_dir = skin_path.join("mounts");
+    if !mounts_dir.is_dir() {
+        return mounts;
+    }
+    for key in MOUNT_KEYS {
+        if mounts_dir.join(format!("{key}.png")).is_file() {
+            mounts.push(key.to_string());
+        }
+    }
+    mounts
+}
+
+/// 扫描皮肤目录下 spells/ 子目录，返回拥有的法术图标名列表。
+fn scan_spells(skin_path: &Path) -> Vec<String> {
+    let mut spells = Vec::new();
+    let spells_dir = skin_path.join("spells");
+    if !spells_dir.is_dir() {
+        return spells;
+    }
+    for key in SPELL_KEYS {
+        if spells_dir.join(format!("{key}.png")).is_file() {
+            spells.push(key.to_string());
+        }
+    }
+    spells
+}
+
 /// 扫描所有皮肤。
 pub fn scan_all_skins(app: &AppHandle) -> Vec<SkinInfo> {
     let mut skins = Vec::new();
@@ -149,7 +188,9 @@ pub fn scan_all_skins(app: &AppHandle) -> Vec<SkinInfo> {
         let actions = scan_skin(&path);
         // idle 是必须的（作为 fallback）
         if actions.contains_key("idle") {
-            skins.push(SkinInfo { name, actions });
+            let mounts = scan_mounts(&path);
+            let spells = scan_spells(&path);
+            skins.push(SkinInfo { name, actions, mounts, spells });
         }
     }
     // default 排前面
@@ -211,6 +252,18 @@ pub fn read_skin_frame(app: AppHandle, skin: String, action: String, frame: u32)
     read_frame(&app, &skin, &action, frame)
 }
 
+/// 读取皮肤的单个资源文件（坐骑/法术图标）。
+/// category: "mounts" | "spells"，name: "sword" | "fireball" 等
+/// 路径解析为 skins/<skin>/<category>/<name>.png
+#[tauri::command]
+pub fn read_skin_asset(app: AppHandle, skin: String, category: String, name: String) -> Option<String> {
+    let root = skins_dir(&app)?;
+    let path = root.join(&skin).join(&category).join(format!("{name}.png"));
+    let bytes = fs::read(&path).ok()?;
+    let b64 = base64_encode(&bytes);
+    Some(format!("data:image/png;base64,{b64}"))
+}
+
 /// 切换皮肤（emit 事件通知前端重新加载）。
 #[tauri::command]
 pub fn switch_skin(app: AppHandle, skin: String) -> Result<(), String> {
@@ -221,4 +274,19 @@ pub fn switch_skin(app: AppHandle, skin: String) -> Result<(), String> {
     }
     let _ = app.emit("skin-switched", &skin);
     Ok(())
+}
+
+/// 获取上次使用的皮肤名（从存档读取），不存在返回 "default"。
+#[tauri::command]
+pub fn get_saved_skin(app: AppHandle) -> String {
+    use tauri::Manager;
+    let state = match app.try_state::<crate::AppState>() {
+        Some(s) => s,
+        None => return "default".to_string(),
+    };
+    let save = match state.save.lock() {
+        Ok(s) => s,
+        Err(_) => return "default".to_string(),
+    };
+    save.get_setting("current_skin").unwrap_or_else(|| "default".to_string())
 }

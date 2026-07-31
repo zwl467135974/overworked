@@ -147,7 +147,11 @@ impl SaveStore {
                 spell_armageddon INTEGER DEFAULT 0
             );
             INSERT OR IGNORE INTO stats (id) VALUES (1);
-            INSERT OR IGNORE INTO events (id) VALUES (1);",
+            INSERT OR IGNORE INTO events (id) VALUES (1);
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );",
         )?;
         // 迁移：旧存档可能没有修仙字段，逐个 ALTER ADD COLUMN（忽略已存在错误）
         for col in [
@@ -432,6 +436,26 @@ impl SaveStore {
                 ev.spell_swords,
                 ev.spell_armageddon,
             ],
+        )?;
+        Ok(())
+    }
+
+    /// 读取一个设置项（key-value），不存在返回 None。
+    pub fn get_setting(&self, key: &str) -> Option<String> {
+        self.conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                params![key],
+                |r| r.get(0),
+            )
+            .ok()
+    }
+
+    /// 写入一个设置项。
+    pub fn set_setting(&self, key: &str, value: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+            params![key, value],
         )?;
         Ok(())
     }
