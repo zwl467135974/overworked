@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>天工阁</title>
     <link rel="stylesheet" href="/shop.css" />
+    <script>
+      // 全局错误捕获（黑屏排查）
+      window.addEventListener("error", (e) => {
+        document.body && (document.body.innerHTML = '<pre style="color:#ff6b6b;padding:20px;font-size:12px;white-space:pre-wrap;">' + e.message + "\n" + (e.error?.stack || "") + "</pre>");
+      });
+    </script>
     <script type="module" src="/shop.js" defer></script>
   </head>
   <body>

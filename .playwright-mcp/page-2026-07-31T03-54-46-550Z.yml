@@ -1,0 +1,17 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]: 天 工 阁
+    - generic [ref=e5]:
+      - generic [ref=e6]: ◈
+      - generic [ref=e7]: "0"
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]: 境界
+      - generic [ref=e11]: 凡人
+    - generic [ref=e12]: 0/100
+    - generic [ref=e14]: 下一境：练气
+  - generic [ref=e15]:
+    - button "开启修仙之路（500 灵石）" [ref=e16] [cursor=pointer]
+    - paragraph [ref=e17]: 攒够 500 灵石，踏入修仙。普通模式守规矩，修仙模式见真章。
+  - text: ◈ ◈ ◈ ◈ ◈
+  - contentinfo
