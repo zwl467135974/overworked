@@ -70,7 +70,7 @@ let particles = [];
 let symbols = []; // 代码符号单独渲染（不走 lighter）
 let shakeAmp = 0;
 let flashAlpha = 0;
-const MAX_PARTICLES = 120; // 法术特效需要更多粒子
+const MAX_PARTICLES = 150; // 法术特效需要更多粒子
 
 function spawnDot(x, y, vx, vy, color, size, life, gravity) {
   if (particles.length > MAX_PARTICLES) return;
@@ -409,7 +409,7 @@ function spellIce(cx, cy) {
       -Math.cos(angle) * 2.5, -Math.sin(angle) * 2.5, iceBlue, 4, 300, 0);
   }
   // 寒气光环（呼吸式收缩）
-  spawnShockwave(cx, cy, "rgba(120,180,255,0.3)", 50, 300);
+  spawnShockwave(cx, cy, "#80b0ff", 50, 300);
 
   // ===== 第二阶段：冰晶核爆（300ms）——大范围冰晶绽放 =====
   setTimeout(() => {
@@ -439,46 +439,43 @@ function spellIce(cx, cy) {
     flashAlpha = 0.25;
   }, 300);
 
-  // ===== 第三阶段：冰刺丛林（500ms-1.2s）——地面冰刺大面积生长 =====
-  // 分3波刺出，每波8根，覆盖大范围
-  for (let wave = 0; wave < 3; wave++) {
+  // ===== 第三阶段：冰刺丛林（500ms-1s）——地面冰刺大面积生长 =====
+  // 分2波刺出，每波6根，覆盖大范围
+  for (let wave = 0; wave < 2; wave++) {
     setTimeout(() => {
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 6; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const dist = 20 + wave * 25 + Math.random() * 20;
+        const dist = 20 + wave * 30 + Math.random() * 20;
         const ix = cx + Math.cos(angle) * dist;
         const iy = cy + Math.abs(Math.sin(angle)) * dist;
         // 冰刺向上生长（光柱+碎片）
         const spikeAngle = -Math.PI / 2 + (Math.random() - 0.5) * 0.4;
         spawnBeam(ix, iy, spikeAngle, 35 + Math.random() * 15, 6, iceBlue, 700);
-        spawnBeam(ix, iy, spikeAngle, 25, 3, iceWhite, 600);
         // 冰刺顶端碎片飞溅
-        for (let j = 0; j < 3; j++) {
-          spawnDot(ix, iy, (Math.random() - 0.5) * 2, -3 - Math.random() * 2, iceWhite, 2, 600, 0.1);
-        }
+        spawnDot(ix, iy, (Math.random() - 0.5) * 2, -3 - Math.random() * 2, iceWhite, 2, 600, 0.1);
       }
       // 每波小冲击波
-      spawnShockwave(cx, cy, "rgba(150,200,255,0.2)", 60 + wave * 20, 500);
+      spawnShockwave(cx, cy, "#a0c0ff", 60 + wave * 30, 500);
       shakeAmp = 6;
     }, 500 + wave * 250);
   }
 
   // ===== 第四阶段：冰封风暴（1.2s-2.5s）——持续寒冰粒子+飘雪+冰雾 =====
   setTimeout(() => {
-    // 大范围冰雾弥漫
-    for (let i = 0; i < 24; i++) {
+    // 冰雾弥漫（减少数量）
+    for (let i = 0; i < 14; i++) {
       const ox = (Math.random() - 0.5) * 140;
       const oy = (Math.random() - 0.5) * 60;
-      spawnDot(cx + ox, cy + oy, (Math.random() - 0.5) * 1.5, 0.5 + Math.random(), "rgba(200,230,255,0.4)", 7, 2000, 0.003);
+      spawnDot(cx + ox, cy + oy, (Math.random() - 0.5) * 1.5, 0.5 + Math.random(), "#b0d0ff", 6, 2000, 0.003);
     }
-    // 冰晶持续飘散
-    for (let i = 0; i < 16; i++) {
+    // 冰晶持续飘散（减少）
+    for (let i = 0; i < 10; i++) {
       const ox = (Math.random() - 0.5) * 120;
       const oy = -Math.random() * 50;
       spawnDot(cx + ox, cy + oy, (Math.random() - 0.5) * 0.8, 0.8 + Math.random() * 0.5, "#ffffff", 2, 2500, 0);
     }
     // 中心余寒光环
-    spawnShockwave(cx, cy, "rgba(180,220,255,0.15)", 80, 1500);
+    spawnShockwave(cx, cy, "#a0c0ff", 80, 1500);
     flashAlpha = 0.1;
   }, 1200);
   // 最后的飘雪（2s）
@@ -800,24 +797,23 @@ function render(now) {
       ctx.stroke();
       ctx.shadowBlur = 0;
     } else if (p.type === "shockwave") {
-      // 厚冲击波：带径向渐变填充的环（比 ring 更有体积感）
+      // 厚冲击波：粗描边环 + 发光（不用 createRadialGradient，性能友好）
       p.radius = 4 + (p.maxRadius - 4) * t;
-      const innerR = p.radius * 0.7;
-      const g = ctx.createRadialGradient(p.x, p.y, innerR, p.x, p.y, p.radius);
-      g.addColorStop(0, "rgba(0,0,0,0)");
-      g.addColorStop(0.6, p.color.replace(")", `,${alpha * 0.3})`).replace("rgb", "rgba"));
-      g.addColorStop(0.85, p.color);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-      ctx.fill();
-      // 外圈高光描边
       ctx.strokeStyle = p.color;
-      ctx.lineWidth = 2 * (1 - t);
+      ctx.lineWidth = Math.max(1, 6 * (1 - t * 0.6)) * scale;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 15 * (1 - t);
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       ctx.stroke();
+      // 内层亮环（白色核心）
+      ctx.strokeStyle = "rgba(255,255,255,0.4)";
+      ctx.lineWidth = Math.max(0.5, 2 * (1 - t)) * scale;
+      ctx.shadowBlur = 8 * (1 - t);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius * 0.92, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
     } else if (p.type === "beam") {
       // 光束：矩形，沿角度方向，带渐变
       ctx.save();
