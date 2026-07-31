@@ -61,6 +61,9 @@ const BREAKTHROUGH_PILL_PRICE: [i64; 6] = [200, 400, 800, 1500, 3000, 99999];
 /// 突破成功率（按当前境界索引，越高越难）——略提高，减少挫败感
 const BREAKTHROUGH_RATE: [f32; 6] = [0.92, 0.88, 0.82, 0.75, 0.65, 0.55];
 
+/// 心魔丹价格（按境界递增）
+const HEART_DEVIL_PILL_PRICE: [i64; 6] = [100, 200, 400, 800, 1500, 3000];
+
 /// 坐骑信息表（索引 1-5 对应 mount_id）
 /// (名称, 价格, 最低境界要求)
 const MOUNT_INFO: [(&str, i64, i64); 6] = [
@@ -92,6 +95,19 @@ pub fn breakthrough_price(realm: i64) -> i64 {
 
 pub fn breakthrough_rate(realm: i64) -> f32 {
     BREAKTHROUGH_RATE.get(realm as usize).copied().unwrap_or(0.5)
+}
+
+/// 心魔丹价格
+pub fn heart_devil_pill_price(realm: i64) -> i64 {
+    HEART_DEVIL_PILL_PRICE.get(realm as usize).copied().unwrap_or(99999)
+}
+
+/// 最终突破成功率 = 基础率 + 任务奖励 + 心魔丹×5%（上限100%）
+pub fn breakthrough_success_rate(ev: &save::EventState) -> f32 {
+    let base = breakthrough_rate(ev.cultivation_realm);
+    let bonus = ev.task_bonus as f32 / 100.0;
+    let pills = ev.heart_devil_pills_used as f32 * 0.05;
+    (base + bonus + pills).min(1.0)
 }
 
 /// 坐骑名称
@@ -593,6 +609,7 @@ impl PetState {
             "spell_thunder" => SPELL_INFO[2].1,
             "spell_swords" => SPELL_INFO[3].1,
             "spell_armageddon" => SPELL_INFO[4].1,
+            "heart_devil_pill" => heart_devil_pill_price(ev.cultivation_realm),
             _ => return Err("未知道具".into()),
         };
         // ===== 坐骑境界门槛 + 已拥有检查 =====
@@ -606,6 +623,12 @@ impl PetState {
                 let owned = mount_owned(ev, mid);
                 if owned {
                     return Err("已拥有此坐骑".into());
+                }
+            }
+            "heart_devil_pill" => {
+                // 心魔丹：每境界限购3个
+                if ev.heart_devil_pills_used >= 3 {
+                    return Err("本境界心魔丹已用完（上限3个）".into());
                 }
             }
             _ => {}
@@ -642,6 +665,8 @@ impl PetState {
             "spell_thunder" => { ev.spell_thunder += 1; }
             "spell_swords" => { ev.spell_swords += 1; }
             "spell_armageddon" => { ev.spell_armageddon += 1; }
+            // 心魔丹：增加突破成功率+5%，计数+1
+            "heart_devil_pill" => { ev.heart_devil_pills_used += 1; }
             _ => {}
         }
         events.push(CultEvent::Bought {
@@ -702,6 +727,44 @@ impl PetState {
         Ok(vec![CultEvent::SpellCast { spell: spell.to_string() }])
     }
 
+    /// 完成境界任务（剧情模式）。tier: 1=完美(+8%) 2=普通(+5%) 3=勉强(+2%)
+    /// 同时给予灵石奖励。
+    pub fn complete_realm_task(
+        &mut self,
+        ev: &mut save::EventState,
+        tier: i64,
+    ) -> Result<Vec<CultEvent>, String> {
+        if !ev.cultivation_mode {
+            return Err("需先开启修仙模式".into());
+        }
+        if ev.realm_task_done {
+            return Err("本境界任务已完成".into());
+        }
+        let (bonus, reward) = match tier {
+            1 => (8, 500),  // 完美
+            2 => (5, 300),  // 普通
+            _ => (2, 150),  // 勉强
+        };
+        ev.task_bonus = bonus;
+        ev.realm_task_done = true;
+        self.savings += reward as f32;
+        Ok(vec![])
+    }
+
+    /// 领取日常任务奖励（灵石+修为）。reward_type: "spirit_stones" | "exp"
+    /// amount 由前端根据任务定义传入。
+    pub fn claim_daily_reward(
+        &mut self,
+        ev: &mut save::EventState,
+        spirit_stones: i64,
+        exp: f32,
+    ) {
+        self.savings += spirit_stones as f32;
+        if ev.cultivation_realm < 6 {
+            ev.cultivation_exp = (ev.cultivation_exp + exp).min(100.0);
+        }
+    }
+
     /// 尝试突破。需修为满 100，消耗一颗突破丹（由 buy_item("breakthrough_pill") 触发）。
     pub fn attempt_breakthrough(
         &mut self,
@@ -720,9 +783,9 @@ impl PetState {
                 ev.cultivation_exp
             ));
         }
-        let rate = breakthrough_rate(ev.cultivation_realm);
+        // 最终成功率 = 基础率 + 任务奖励 + 心魔丹
+        let rate = breakthrough_success_rate(ev);
         let roll: f32 = {
-            // 简单 LCG 伪随机（不依赖 rand crate）
             let seed = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos() as u64)
@@ -732,9 +795,12 @@ impl PetState {
         };
         let mut events = Vec::new();
         if roll < rate {
-            // 突破成功
+            // 突破成功：升级 + 重置任务/心魔丹
             ev.cultivation_realm += 1;
             ev.cultivation_exp = 0.0;
+            ev.task_bonus = 0;
+            ev.heart_devil_pills_used = 0;
+            ev.realm_task_done = false;
             if ev.cultivation_realm >= 6 {
                 events.push(CultEvent::Ascension);
             } else {

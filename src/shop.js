@@ -40,8 +40,10 @@ const shopSection = document.getElementById("shop-section");
 const mountSection = document.getElementById("mount-section");
 const spellSection = document.getElementById("spell-section");
 const invSection = document.getElementById("inv-section");
+const taskSection = document.getElementById("task-section");
 const toast = document.getElementById("toast");
 const priceBreakthrough = document.getElementById("price-breakthrough_pill");
+const priceHeartDevil = document.getElementById("price-heart_devil_pill");
 const mountList = document.getElementById("mount-list");
 const spellList = document.getElementById("spell-list");
 
@@ -109,6 +111,13 @@ function render(data) {
   expText.textContent = Math.floor(data.exp) + "/100";
   nextRealm.textContent = data.next_realm;
   if (priceBreakthrough) priceBreakthrough.textContent = data.breakthrough_price;
+  if (priceHeartDevil) priceHeartDevil.textContent = data.heart_devil_pill_price;
+  // 突破成功率标签
+  const rateTag = document.getElementById("breakthrough-rate-tag");
+  if (rateTag) rateTag.textContent = `成功率 ${data.breakthrough_rate}%`;
+  // 心魔丹计数
+  const hdCount = document.getElementById("heart-devil-count");
+  if (hdCount) hdCount.textContent = `${data.heart_devil_pills_used}/3`;
   document.getElementById("cnt-qi_pill").textContent = data.qi_pill;
   document.getElementById("cnt-life_pill").textContent = data.life_pill;
   document.getElementById("cnt-spirit_talisman").textContent = data.spirit_talisman;
@@ -121,12 +130,17 @@ function render(data) {
     mountSection.hidden = false;
     spellSection.hidden = false;
     invSection.hidden = false;
+    taskSection.hidden = false;
     renderMounts(data);
     renderSpells(data);
+    renderTasks(data);
     if (data.realm >= 6) {
       const btn = document.querySelector('[data-item="breakthrough_pill"]');
       if (btn) { btn.disabled = true; btn.textContent = "已飞升"; }
     }
+    // 心魔丹按钮：已用完或已飞升则禁用
+    const hdBtn = document.querySelector('[data-item="heart_devil_pill"]');
+    if (hdBtn) hdBtn.disabled = data.heart_devil_pills_used >= 3 || data.realm >= 6;
   } else if (data.ever_cultivated) {
     btnToggleMode.textContent = "重入修仙（免费）";
     btnToggleMode.classList.remove("off");
@@ -135,6 +149,7 @@ function render(data) {
     mountSection.hidden = true;
     spellSection.hidden = true;
     invSection.hidden = true;
+    taskSection.hidden = true;
   } else {
     btnToggleMode.textContent = "开启修仙之路（500 灵石）";
     btnToggleMode.classList.remove("off");
@@ -146,6 +161,7 @@ function render(data) {
     mountSection.hidden = true;
     spellSection.hidden = true;
     invSection.hidden = true;
+    taskSection.hidden = true;
   }
 
   // 丹药按钮可用性
@@ -235,5 +251,254 @@ listen("cult-ascension", () => { showToast("恭喜飞升！", "success"); refres
 listen("mount-equipped", () => refresh());
 listen("spell-cast", () => refresh());
 listen("tauri://focus", () => refresh());
+
+// ===== 日常任务系统 =====
+const DAILY_TASKS = [
+  { id: "work_stones", name: "打工攒灵石", desc: (n) => `打工获得 ${n} 灵石`, target: (realm) => 100 + realm * 50, reward_stones: 80, reward_exp: 5 },
+  { id: "pomodoro", name: "专注修炼", desc: "完成 1 次番茄钟（专注25分钟）", target: 1, reward_stones: 150, reward_exp: 15 },
+  { id: "cast_spell", name: "施展法术", desc: "施展 1 次法术", target: 1, reward_stones: 100, reward_exp: 8 },
+  { id: "idle_cultivate", name: "静心打坐", desc: "挂机积累修为 10 点", target: 10, reward_stones: 60, reward_exp: 10 },
+];
+let dailyTaskState = []; // [{task, progress, claimed}]
+
+function generateDailyTasks(realm) {
+  // 随机选3个不同任务
+  const pool = [...DAILY_TASKS];
+  const selected = [];
+  for (let i = 0; i < 3 && pool.length > 0; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    const task = pool.splice(idx, 1)[0];
+    selected.push({ task, progress: 0, claimed: false });
+  }
+  return selected;
+}
+
+function renderTasks(data) {
+  if (!dailyTaskState || dailyTaskState.length === 0) {
+    dailyTaskState = generateDailyTasks(data.realm);
+  }
+  const container = document.getElementById("daily-tasks");
+  container.innerHTML = "";
+  for (const dt of dailyTaskState) {
+    const target = typeof dt.task.target === "function" ? dt.task.target(data.realm) : dt.task.target;
+    const done = dt.progress >= target;
+    const desc = typeof dt.task.desc === "function" ? dt.task.desc(target) : dt.task.desc;
+    const card = document.createElement("div");
+    card.className = "item-card daily-task-card";
+    card.innerHTML = `
+      <div class="item-icon task-icon">${done ? "✓" : "▶"}</div>
+      <div class="item-info">
+        <div class="item-name">${dt.task.name}</div>
+        <div class="item-desc">${desc} <span class="task-progress">(${Math.min(dt.progress, target)}/${target})</span></div>
+      </div>
+      <div class="item-right">
+        <div class="task-reward">◈${dt.task.reward_stones}</div>
+        <button class="btn-claim" data-task="${dt.task.id}" ${done ? "" : "disabled"}>${done ? "领取" : "未完成"}</button>
+      </div>
+    `;
+    container.appendChild(card);
+  }
+
+  // 境界任务
+  const realmTaskBtn = document.getElementById("btn-realm-task");
+  const realmTaskName = document.getElementById("realm-task-name");
+  const realmTaskDesc = document.getElementById("realm-task-desc");
+  if (data.realm_task_done) {
+    realmTaskBtn.textContent = "已完成";
+    realmTaskBtn.disabled = true;
+    realmTaskDesc.textContent = `突破成功率 +${data.task_bonus}%`;
+  } else if (data.realm >= 6) {
+    realmTaskBtn.textContent = "已飞升";
+    realmTaskBtn.disabled = true;
+  } else {
+    realmTaskBtn.textContent = "接受";
+    realmTaskBtn.disabled = false;
+    realmTaskName.textContent = REALM_STORIES[data.realm]?.name || "试炼";
+    realmTaskDesc.textContent = "完成剧情任务获得突破成功率加成";
+  }
+}
+
+// ===== 境界剧情数据 =====
+const REALM_STORIES = {
+  1: {
+    name: "引气入体",
+    scenes: [
+      { text: "你盘膝而坐，感受天地间稀薄的灵气。远处传来一声叹息：「欲入修仙之门，先过心魔三问。」\n\n第一问：修仙为何？", choices: [
+        { text: "为求长生不老", next: 1, tier: 2 },
+        { text: "为证大道，超脱凡俗", next: 1, tier: 1 },
+        { text: "不想打工了", next: 1, tier: 3 },
+      ]},
+      { text: "第二问浮现于心：「若修炼途中，旧友凡人老去，你独活世间，当如何？」", choices: [
+        { text: "大道无情，继续前行", next: 2, tier: 1 },
+        { text: "陪伴他们走完一生", next: 2, tier: 2 },
+        { text: "从未有过朋友", next: 2, tier: 3 },
+      ]},
+      { text: "第三问：「修仙路上九死一生，你可愿？」\n\n三问过后，一缕灵气涌入丹田……", choices: [
+        { text: "纵死无悔", finish: true, tier: 1 },
+        { text: "尽力而为", finish: true, tier: 2 },
+        { text: "能不能先想想", finish: true, tier: 3 },
+      ]},
+    ],
+  },
+  2: {
+    name: "筑基大成",
+    scenes: [
+      { text: "练气圆满，筑基之劫降临。一座幻阵出现在眼前，阵中是你的心魔——一个不断加班、永不停歇的自己。\n\n它说：「你就是个打工人，修什么仙？」", choices: [
+        { text: "挥剑斩心魔，意志坚定", next: 1, tier: 1 },
+        { text: "与心魔对话，化解执念", next: 1, tier: 2 },
+        { text: "被说动了，差点放弃", next: 1, tier: 3 },
+      ]},
+      { text: "心魔消散，筑基的灵力如潮水般涌来。你需要引导这股力量……", choices: [
+        { text: "稳扎稳打，步步为营", finish: true, tier: 1 },
+        { text: "顺势而为", finish: true, tier: 2 },
+        { text: "差点失控", finish: true, tier: 3 },
+      ]},
+    ],
+  },
+  3: {
+    name: "金丹凝炼",
+    scenes: [
+      { text: "筑基大成，该凝金丹了。丹田中灵力旋转，渐成漩涡。一位老者的虚影浮现：「金丹之道，在于一心。心若不专，丹不成形。」\n\n你选择如何凝丹？", choices: [
+        { text: "万念归一，专注凝丹", next: 1, tier: 1 },
+        { text: "以身为炉，以心为火", next: 1, tier: 2 },
+        { text: "边修炼边摸鱼", next: 1, tier: 3 },
+      ]},
+      { text: "金丹逐渐成形，金光大盛！最后一关——丹劫降临，一道天雷劈下！", choices: [
+        { text: "以金丹硬抗天劫", finish: true, tier: 1 },
+        { text: "借力化劫", finish: true, tier: 2 },
+        { text: "差点被劈碎", finish: true, tier: 3 },
+      ]},
+    ],
+  },
+  4: {
+    name: "元婴出窍",
+    scenes: [
+      { text: "金丹欲化元婴，需经历「化形之痛」。你的金丹裂开，一个小人从中诞生——那是你的元婴。\n\n元婴睁眼的第一句话是……", choices: [
+        { text: "「我是谁不重要，重要的是我要变强」", next: 1, tier: 1 },
+        { text: "「你好，另一个我」", next: 1, tier: 2 },
+        { text: "「能不能让我再睡会」", next: 1, tier: 3 },
+      ]},
+      { text: "元婴成形，但还不稳定。你需要让它与肉身合一……", choices: [
+        { text: "天人合一，完美融合", finish: true, tier: 1 },
+        { text: "慢慢磨合", finish: true, tier: 2 },
+        { text: "元婴差点跑掉", finish: true, tier: 3 },
+      ]},
+    ],
+  },
+  5: {
+    name: "化神渡劫",
+    scenes: [
+      { text: "元婴圆满，化神在即。但化神劫是修仙路上最凶险的天劫——九道天雷接连劈下。\n\n天空中乌云翻涌，第一道雷已至……", choices: [
+        { text: "以身为引，主动迎雷", next: 1, tier: 1 },
+        { text: "布阵御雷", next: 1, tier: 2 },
+        { text: "躲在石头后面", next: 1, tier: 3 },
+      ]},
+      { text: "九道天雷你扛过了八道。最后一道——也是最恐怖的——劈向你的元神……", choices: [
+        { text: "「我命由我不由天！」硬抗", finish: true, tier: 1 },
+        { text: "借法宝之力渡劫", finish: true, tier: 2 },
+        { text: "差点元神俱灭", finish: true, tier: 3 },
+      ]},
+    ],
+  },
+  6: {
+    name: "飞升之路",
+    scenes: [
+      { text: "化神圆满，飞升之门已开。天际出现一道金色裂缝，那是通往仙界的路。\n\n飞升后，你将离开这个打工的世界，化为仙人……", choices: [
+        { text: "义无反顾，踏入飞升之门", finish: true, tier: 1 },
+      ]},
+    ],
+  },
+};
+
+// ===== 剧情模式 =====
+let storyState = null; // {realm, sceneIdx, tier}
+const storyOverlay = document.getElementById("story-overlay");
+const storyTitle = document.getElementById("story-title");
+const storyText = document.getElementById("story-text");
+const storyChoices = document.getElementById("story-choices");
+
+function startRealmTask(realm) {
+  const story = REALM_STORIES[realm];
+  if (!story) return;
+  storyState = { realm, sceneIdx: 0, tier: 3 };
+  storyTitle.textContent = `${REALM_NAMES[realm]} · ${story.name}`;
+  storyOverlay.hidden = false;
+  renderStoryScene();
+}
+
+function renderStoryScene() {
+  const story = REALM_STORIES[storyState.realm];
+  const scene = story.scenes[storyState.sceneIdx];
+  if (!scene) return;
+  storyText.textContent = scene.text;
+  storyChoices.innerHTML = "";
+  for (const choice of scene.choices) {
+    const btn = document.createElement("button");
+    btn.className = "btn-story-choice";
+    btn.textContent = choice.text;
+    btn.addEventListener("click", () => {
+      // 记录最好的 tier（数字越小越好）
+      if (choice.tier < storyState.tier) storyState.tier = choice.tier;
+      if (choice.finish) {
+        finishRealmTask(storyState.tier);
+      } else {
+        storyState.sceneIdx = choice.next;
+        renderStoryScene();
+      }
+    });
+    storyChoices.appendChild(btn);
+  }
+}
+
+async function finishRealmTask(tier) {
+  try {
+    await invoke("complete_realm_task", { tier });
+    const tierName = tier === 1 ? "完美" : tier === 2 ? "普通" : "勉强";
+    const bonus = tier === 1 ? 8 : tier === 2 ? 5 : 2;
+    showToast(`${tierName}完成！突破成功率 +${bonus}%`, "success");
+  } catch (e) {
+    showToast(String(e), "error");
+  }
+  storyOverlay.hidden = true;
+  storyState = null;
+  await refresh();
+}
+
+// 境界任务按钮
+document.getElementById("btn-realm-task").addEventListener("click", () => {
+  const data = window._lastShopData;
+  if (data && data.cultivation_mode && !data.realm_task_done && data.realm < 6) {
+    startRealmTask(data.realm);
+  }
+});
+
+// 日常任务领取按钮（事件委托）
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-task]");
+  if (!btn || btn.disabled) return;
+  const taskId = btn.dataset.task;
+  const dt = dailyTaskState.find((d) => d.task.id === taskId);
+  if (!dt || dt.claimed) return;
+  const target = typeof dt.task.target === "function" ? dt.task.target(window._lastShopData?.realm || 1) : dt.task.target;
+  if (dt.progress < target) return;
+  dt.claimed = true;
+  invoke("claim_daily_reward", { spiritStones: dt.task.reward_stones, exp: dt.task.reward_exp })
+    .then(() => showToast(`领取 ${dt.task.reward_stones} 灵石！`, "success"))
+    .catch((err) => showToast(String(err), "error"))
+    .finally(() => refresh());
+});
+
+// 保存最近一次 shop data 供任务系统使用
+const _origRefresh = refresh;
+refresh = async function() {
+  try {
+    const data = await invoke("get_shop_data");
+    window._lastShopData = data;
+    render(data);
+  } catch (e) {
+    console.error("get_shop_data", e);
+    showToast("数据读取失败", "error");
+  }
+};
 
 refresh();

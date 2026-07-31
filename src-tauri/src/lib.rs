@@ -23,8 +23,8 @@ use std::time::Duration;
 
 use engine::save::SaveStore;
 use engine::state::{
-    breakthrough_price, mount_name, realm_name, spell_name, today_str_from_secs, weekday_from_secs,
-    CultEvent,
+    breakthrough_price, breakthrough_success_rate, heart_devil_pill_price, mount_name, realm_name,
+    spell_name, today_str_from_secs, weekday_from_secs, CultEvent,
 };
 use engine::{CultivationPayload, PetState, StatsPayload, TickEvent};
 use rendering_bridge::Expression;
@@ -167,6 +167,12 @@ struct ShopData {
     equipped_mount: i64,
     // 法术库存
     spells: Vec<i64>, // [fireball, ice, thunder, swords, armageddon]
+    // 任务/心魔
+    task_bonus: i64,           // 境界任务给予的突破加成(0-8)
+    realm_task_done: bool,     // 当前境界任务是否完成
+    heart_devil_pills_used: i64, // 已用心魔丹数(0-3)
+    heart_devil_pill_price: i64,
+    breakthrough_rate: i64,    // 最终突破成功率(百分比)
 }
 
 /// 获取商店数据（商店窗口启动时拉取）。
@@ -204,6 +210,11 @@ fn get_shop_data(state: tauri::State<'_, AppState>) -> ShopData {
             ev.spell_swords,
             ev.spell_armageddon,
         ],
+        task_bonus: ev.task_bonus,
+        realm_task_done: ev.realm_task_done,
+        heart_devil_pills_used: ev.heart_devil_pills_used,
+        heart_devil_pill_price: heart_devil_pill_price(ev.cultivation_realm),
+        breakthrough_rate: (breakthrough_success_rate(&ev) * 100.0) as i64,
     }
 }
 
@@ -285,6 +296,55 @@ fn cast_spell(
         events
     };
     emit_cult_events(&app, &cult_events);
+    push_stats_and_cult(&app, &state);
+    Ok(())
+}
+
+/// 完成境界任务（剧情模式）。tier: 1=完美 2=普通 3=勉强
+#[tauri::command]
+fn complete_realm_task(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    tier: i64,
+) -> Result<(), String> {
+    {
+        let mut pet = state.state.lock().map_err(|e| e.to_string())?;
+        let mut ev = state
+            .save
+            .lock()
+            .map(|s| s.load_events())
+            .map_err(|e| e.to_string())?;
+        pet.complete_realm_task(&mut ev, tier)?;
+        if let Ok(save) = state.save.lock() {
+            let _ = save.save_events(&ev);
+            let _ = save.save_state(pet.to_snapshot());
+        }
+    }
+    push_stats_and_cult(&app, &state);
+    Ok(())
+}
+
+/// 领取日常任务奖励。
+#[tauri::command]
+fn claim_daily_reward(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    spirit_stones: i64,
+    exp: f32,
+) -> Result<(), String> {
+    {
+        let mut pet = state.state.lock().map_err(|e| e.to_string())?;
+        let mut ev = state
+            .save
+            .lock()
+            .map(|s| s.load_events())
+            .map_err(|e| e.to_string())?;
+        pet.claim_daily_reward(&mut ev, spirit_stones, exp);
+        if let Ok(save) = state.save.lock() {
+            let _ = save.save_events(&ev);
+            let _ = save.save_state(pet.to_snapshot());
+        }
+    }
     push_stats_and_cult(&app, &state);
     Ok(())
 }
@@ -1294,6 +1354,8 @@ pub fn run() {
             toggle_cultivation,
             equip_mount,
             cast_spell,
+            complete_realm_task,
+            claim_daily_reward,
             skin::list_skins,
             skin::read_skin_frame,
             skin::read_skin_asset,

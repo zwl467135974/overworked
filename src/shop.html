@@ -37,6 +37,24 @@
         <p class="hint" id="mode-hint">攒够 500 灵石，踏入修仙。普通模式守规矩，修仙模式见真章。</p>
       </section>
 
+      <!-- 任务大厅（修仙模式可见） -->
+      <section class="shop" id="task-section" hidden>
+        <div class="section-title">悬赏榜 · 任务</div>
+        <!-- 境界任务 -->
+        <div class="item-card realm-task-card" id="realm-task-card">
+          <div class="item-icon">渡</div>
+          <div class="item-info">
+            <div class="item-name">境界任务 · <span id="realm-task-name">试炼</span></div>
+            <div class="item-desc" id="realm-task-desc">完成剧情任务获得突破加成</div>
+          </div>
+          <div class="item-right">
+            <button id="btn-realm-task" class="btn-quest">接受</button>
+          </div>
+        </div>
+        <!-- 日常任务（动态生成） -->
+        <div id="daily-tasks"></div>
+      </section>
+
       <!-- 丹药商店（修仙模式可见） -->
       <section class="shop" id="shop-section" hidden>
         <div class="section-title">丹药阁</div>
@@ -44,12 +62,23 @@
           <div class="item-card" data-item="breakthrough_pill">
             <div class="item-icon">丹</div>
             <div class="item-info">
-              <div class="item-name">突破丹</div>
+              <div class="item-name">突破丹 <span class="rate-tag" id="breakthrough-rate-tag">成功率 92%</span></div>
               <div class="item-desc">尝试突破当前境界</div>
             </div>
             <div class="item-right">
               <div class="item-price" id="price-breakthrough_pill">200</div>
               <button class="btn-buy" data-item="breakthrough_pill">购买</button>
+            </div>
+          </div>
+          <div class="item-card" data-item="heart_devil_pill">
+            <div class="item-icon">魔</div>
+            <div class="item-info">
+              <div class="item-name">心魔丹 <span class="stock-tag" id="heart-devil-count">0/3</span></div>
+              <div class="item-desc">突破成功率 +5%（每境界限3个）</div>
+            </div>
+            <div class="item-right">
+              <div class="item-price" id="price-heart_devil_pill">100</div>
+              <button class="btn-buy" data-item="heart_devil_pill">购买</button>
             </div>
           </div>
           <div class="item-card" data-item="qi_pill">
@@ -112,6 +141,15 @@
 
       <!-- 底部提示 -->
       <footer class="toast" id="toast"></footer>
+    </div>
+
+    <!-- 境界任务剧情遮罩 -->
+    <div id="story-overlay" class="story-overlay" hidden>
+      <div class="story-box">
+        <div class="story-title" id="story-title"></div>
+        <div class="story-text" id="story-text"></div>
+        <div class="story-choices" id="story-choices"></div>
+      </div>
     </div>
   </body>
 </html>

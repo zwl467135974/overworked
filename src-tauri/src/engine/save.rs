@@ -74,6 +74,10 @@ pub struct EventState {
     pub spell_thunder: i64,            // 雷劫术
     pub spell_swords: i64,             // 万剑诀
     pub spell_armageddon: i64,         // 天地同寿
+    // 任务/心魔系统
+    pub task_bonus: i64,               // 境界任务给予的突破成功率加成(0-100%)
+    pub heart_devil_pills_used: i64,   // 当前境界已使用的心魔丹数量(上限3)
+    pub realm_task_done: bool,         // 当前境界任务是否已完成
 }
 
 /// 存档存储器。持 SQLite 连接，所有操作同步（SQLite 够快，无需异步）。
@@ -144,7 +148,10 @@ impl SaveStore {
                 spell_ice INTEGER DEFAULT 0,
                 spell_thunder INTEGER DEFAULT 0,
                 spell_swords INTEGER DEFAULT 0,
-                spell_armageddon INTEGER DEFAULT 0
+                spell_armageddon INTEGER DEFAULT 0,
+                task_bonus INTEGER DEFAULT 0,
+                heart_devil_pills_used INTEGER DEFAULT 0,
+                realm_task_done INTEGER DEFAULT 0
             );
             INSERT OR IGNORE INTO stats (id) VALUES (1);
             INSERT OR IGNORE INTO events (id) VALUES (1);
@@ -175,6 +182,9 @@ impl SaveStore {
             "spell_thunder INTEGER DEFAULT 0",
             "spell_swords INTEGER DEFAULT 0",
             "spell_armageddon INTEGER DEFAULT 0",
+            "task_bonus INTEGER DEFAULT 0",
+            "heart_devil_pills_used INTEGER DEFAULT 0",
+            "realm_task_done INTEGER DEFAULT 0",
         ] {
             let sql = format!("ALTER TABLE events ADD COLUMN {col}");
             let _ = conn.execute(&sql, []); // 忽略"已存在"错误
@@ -311,7 +321,7 @@ impl SaveStore {
 
     /// 读取事件追踪状态。
     pub fn load_events(&self) -> EventState {
-        let row: rusqlite::Result<(i64, Option<String>, i64, i64, Option<String>, i64, i64, i64, i64, i64, i64, f64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)> =
+        let row: rusqlite::Result<(i64, Option<String>, i64, i64, Option<String>, i64, i64, i64, i64, i64, i64, f64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)> =
             self.conn.query_row(
                 "SELECT last_payday_month, last_teambuilding_day, has_promoted,
                         mood_zero_days, last_mood_day, vacation_until, leave_until, pet_variant, fx_enabled,
@@ -320,7 +330,8 @@ impl SaveStore {
                         savings_milestone_shown, ever_cultivated,
                         owned_mount_sword, owned_mount_gourd, owned_mount_dragon, owned_mount_qilin, owned_mount_phoenix,
                         equipped_mount,
-                        spell_fireball, spell_ice, spell_thunder, spell_swords, spell_armageddon
+                        spell_fireball, spell_ice, spell_thunder, spell_swords, spell_armageddon,
+                        task_bonus, heart_devil_pills_used, realm_task_done
                  FROM events WHERE id = 1",
                 [],
                 |r| {
@@ -330,13 +341,13 @@ impl SaveStore {
                         r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?, r.get(14)?, r.get(15)?,
                         r.get(16)?, r.get(17)?, r.get(18)?, r.get(19)?, r.get(20)?,
                         r.get(21)?, r.get(22)?, r.get(23)?, r.get(24)?, r.get(25)?,
-                        r.get(26)?, r.get(27)?, r.get(28)?,
+                        r.get(26)?, r.get(27)?, r.get(28)?, r.get(29)?, r.get(30)?, r.get(31)?,
                     ))
                 },
             );
         match row {
             Ok((pm, tb, hp, mzd, lmd, vu, lu, pv, fx, cm, cr, ce, iqp, ilp, ist, sbu, sms, ec,
-                oms, omg, omd, omq, omph, em, sf, si, st, ss, sa)) => EventState {
+                oms, omg, omd, omq, omph, em, sf, si, st, ss, sa, tbonus, hdpu, rtd)) => EventState {
                 last_payday_month: pm,
                 last_teambuilding_day: tb.unwrap_or_default(),
                 has_promoted: hp != 0,
@@ -366,6 +377,9 @@ impl SaveStore {
                 spell_thunder: st,
                 spell_swords: ss,
                 spell_armageddon: sa,
+                task_bonus: tbonus,
+                heart_devil_pills_used: hdpu,
+                realm_task_done: rtd != 0,
             },
             Err(_) => EventState::default(),
         }
@@ -403,7 +417,10 @@ impl SaveStore {
                 spell_ice = ?26,
                 spell_thunder = ?27,
                 spell_swords = ?28,
-                spell_armageddon = ?29
+                spell_armageddon = ?29,
+                task_bonus = ?30,
+                heart_devil_pills_used = ?31,
+                realm_task_done = ?32
              WHERE id = 1",
             params![
                 ev.last_payday_month,
@@ -435,6 +452,9 @@ impl SaveStore {
                 ev.spell_thunder,
                 ev.spell_swords,
                 ev.spell_armageddon,
+                ev.task_bonus,
+                ev.heart_devil_pills_used,
+                ev.realm_task_done as i64,
             ],
         )?;
         Ok(())
