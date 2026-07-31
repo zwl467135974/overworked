@@ -185,6 +185,7 @@ function showToast(msg, type = "") {
 async function refresh() {
   try {
     const data = await invoke("get_shop_data");
+    window._lastShopData = data;
     render(data);
   } catch (e) {
     console.error("get_shop_data", e);
@@ -488,17 +489,5 @@ document.addEventListener("click", (e) => {
     .finally(() => refresh());
 });
 
-// 保存最近一次 shop data 供任务系统使用
-const _origRefresh = refresh;
-refresh = async function() {
-  try {
-    const data = await invoke("get_shop_data");
-    window._lastShopData = data;
-    render(data);
-  } catch (e) {
-    console.error("get_shop_data", e);
-    showToast("数据读取失败", "error");
-  }
-};
-
+// 启动
 refresh();
