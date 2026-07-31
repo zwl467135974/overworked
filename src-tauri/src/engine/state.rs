@@ -56,10 +56,10 @@ const REALM_NAMES: [&str; 7] = [
     "凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升",
 ];
 
-/// 突破丹价（按当前境界索引）
-const BREAKTHROUGH_PILL_PRICE: [i64; 6] = [200, 500, 1000, 3000, 8000, 99999];
-/// 突破成功率（按当前境界索引，越高越难）
-const BREAKTHROUGH_RATE: [f32; 6] = [0.90, 0.85, 0.80, 0.70, 0.60, 0.50];
+/// 突破丹价（按当前境界索引）——降低中后期价格，减少卡顿感
+const BREAKTHROUGH_PILL_PRICE: [i64; 6] = [200, 400, 800, 1500, 3000, 99999];
+/// 突破成功率（按当前境界索引，越高越难）——略提高，减少挫败感
+const BREAKTHROUGH_RATE: [f32; 6] = [0.92, 0.88, 0.82, 0.75, 0.65, 0.55];
 
 /// 坐骑信息表（索引 1-5 对应 mount_id）
 /// (名称, 价格, 最低境界要求)
@@ -336,7 +336,9 @@ impl PetState {
             let target_wage = 30.0 + keys_per_sec * 20.0; // 1键/秒≈50, 3键/秒≈90, 5键/秒≈130
             self.hourly_wage += (target_wage - self.hourly_wage) * 0.02 * dt;
             // 存款：按当前时薪算（×60 加速，游戏化节奏）
-            self.savings += self.hourly_wage * dt / 60.0;
+            // 修仙模式额外 ×1.5（修仙者效率更高，减少后期攒丹的枯燥）
+            let savings_mult = if ev.cultivation_mode { 1.5 } else { 1.0 };
+            self.savings += self.hourly_wage * dt / 60.0 * savings_mult;
             self.mood -= 0.2 * dt;
             self.focus_seconds += dt;
             // Boss来了检测：挂机超 2 分钟后突然疯狂打字（keys_per_sec > 3）
@@ -366,20 +368,20 @@ impl PetState {
         self.mood = self.mood.clamp(0.0, 100.0);
 
         // ===== 修为积累（修仙模式专属） =====
-        // 红线放开：数值可见、游戏化。打工/挂机/专注都积累，专注最快。
+        // 修为积累速度与灵石获取匹配：打工约5分钟满100，与攒突破丹的时间相近。
         // 聚灵符期间 ×2。
         if ev.cultivation_mode && ev.cultivation_realm < 6 {
             let boost = now_secs as i64 <= ev.spirit_boost_until;
             let mult = if boost { 2.0 } else { 1.0 };
             let gain = if is_working {
-                // 打工每秒 +0.2（5 秒约 +1）
-                0.2 * dt * mult
+                // 打工每5秒tick约+1.5修为（100修为≈5-6分钟）
+                0.3 * dt * mult
             } else if is_idling {
-                0.1 * dt * mult
+                0.15 * dt * mult
             } else {
-                0.05 * dt * mult
+                0.08 * dt * mult
             };
-            ev.cultivation_exp = (ev.cultivation_exp + gain * 10.0).min(100.0);
+            ev.cultivation_exp = (ev.cultivation_exp + gain).min(100.0);
         }
 
         // ===== 番茄钟检查 =====
@@ -388,10 +390,10 @@ impl PetState {
             self.focus_seconds = 0.0;
             self.savings += 200.0; // 项目交付奖金
             self.mood = (self.mood + 15.0).min(100.0); // 交付心情大好
-            // 修仙模式：交付=悟道，修为大涨
+            // 修仙模式：交付=悟道，修为增加
             if ev.cultivation_mode && ev.cultivation_realm < 6 {
                 let boost = now_secs as i64 <= ev.spirit_boost_until;
-                let g = if boost { 40.0 } else { 20.0 };
+                let g = if boost { 20.0 } else { 10.0 };
                 ev.cultivation_exp = (ev.cultivation_exp + g).min(100.0);
             }
             events.push(TickEvent::PomodoroComplete);
