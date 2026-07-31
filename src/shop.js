@@ -187,9 +187,17 @@ async function refresh() {
     const data = await invoke("get_shop_data");
     window._lastShopData = data;
     render(data);
+    // 移除加载提示
+    const loading = document.getElementById("loading");
+    if (loading) loading.remove();
   } catch (e) {
     console.error("get_shop_data", e);
-    showToast("数据读取失败", "error");
+    // 显示错误到页面
+    const loading = document.getElementById("loading");
+    if (loading) {
+      loading.textContent = "加载失败: " + e;
+      loading.style.color = "#ff6b6b";
+    }
   }
 }
 

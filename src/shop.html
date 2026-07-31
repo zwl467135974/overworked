@@ -8,12 +8,23 @@
     <script>
       // 全局错误捕获（黑屏排查）
       window.addEventListener("error", (e) => {
-        document.body && (document.body.innerHTML = '<pre style="color:#ff6b6b;padding:20px;font-size:12px;white-space:pre-wrap;">' + e.message + "\n" + (e.error?.stack || "") + "</pre>");
+        var pre = document.createElement("pre");
+        pre.style.cssText = "color:#ff6b6b;padding:20px;font-size:12px;white-space:pre-wrap;position:fixed;top:0;left:0;z-index:9999;";
+        pre.textContent = "JS错误: " + e.message + "\n" + (e.error && e.error.stack || "");
+        document.body.appendChild(pre);
+      });
+      // 模块加载失败检测
+      window.addEventListener("unhandledrejection", (e) => {
+        var pre = document.createElement("pre");
+        pre.style.cssText = "color:#ff6b6b;padding:20px;font-size:12px;white-space:pre-wrap;position:fixed;top:0;left:0;z-index:9999;";
+        pre.textContent = "异步错误: " + (e.reason && e.reason.message || e.reason || "");
+        document.body.appendChild(pre);
       });
     </script>
     <script type="module" src="/shop.js" defer></script>
   </head>
   <body>
+    <div id="loading" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#ffd97a;font-size:14px;z-index:999;">加载中...</div>
     <div id="app">
       <!-- 顶部：道号 / 灵石 -->
       <header class="topbar">
