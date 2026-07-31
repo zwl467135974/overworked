@@ -535,62 +535,81 @@ function spellThunder(cx, cy) {
 }
 
 // 万剑诀：聚剑→剑阵旋转→万剑齐发→归宗收束（经典四段式）
-// 设定参考：以意念驱剑，数十柄飞剑悬浮编队，旋转汇聚后锁定目标齐射，
-// 攻击完毕万剑归宗收回。出自风云/蜀山传经典武侠仙侠设定。
+// 价格3000，必须在气势和范围上全面碾压雷劫术(1200)。
+// 核心差异：雷劫是"天降单体打击"，万剑诀是"全屏剑雨覆盖"。
 function spellSwords(cx, cy) {
   const swordColor = "#ffd700";
-  // ===== 第一阶段：聚剑（0-500ms）——四面八方飞剑汇聚到头顶 =====
-  for (let i = 0; i < 12; i++) {
+  // ===== 第一阶段：聚剑（0-500ms）——全屏四面八方飞剑汇聚 =====
+  // 24柄剑从极远处飞来（覆盖全屏视觉）
+  for (let i = 0; i < 24; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const dist = 120 + Math.random() * 80;
+    const dist = 200 + Math.random() * 120;
     const sx = cx + Math.cos(angle) * dist;
-    const sy = cy - 50 + Math.sin(angle) * dist * 0.5;
-    // 飞剑朝中心飞行
+    const sy = cy - 50 + Math.sin(angle) * dist * 0.6;
     const vx = (cx - sx) / 30;
     const vy = (cy - 50 - sy) / 30;
-    spawnFlyingSword(sx, sy, vx, vy, Math.atan2(vy, vx) + Math.PI / 2, 20 + Math.random() * 8, swordColor, 500);
+    spawnFlyingSword(sx, sy, vx, vy, Math.atan2(vy, vx) + Math.PI / 2, 22 + Math.random() * 10, swordColor, 500);
   }
-  // ===== 第二阶段：剑阵旋转（500ms）——12柄剑环形悬浮，旋转加速 =====
+  // ===== 第二阶段：剑阵旋转（500ms）——双层剑阵，大范围悬浮 =====
   setTimeout(() => {
-    spawnSwordArray(cx, cy, 12, 60, swordColor);
-    // 剑阵下方金光法阵
-    spawnShockwave(cx, cy - 20, swordColor, 70, 1200);
-    flashAlpha = 0.1;
+    // 外层大剑阵（18柄，半径120，全屏可见）
+    spawnSwordArray(cx, cy, 18, 120, swordColor);
+    // 剑阵下方大型金光法阵（比雷劫的冲击波更大）
+    spawnShockwave(cx, cy - 20, swordColor, 150, 1500);
+    setTimeout(() => spawnShockwave(cx, cy - 20, "#ffffff", 120, 1200), 100);
+    flashAlpha = 0.15;
   }, 500);
-  // ===== 第三阶段：万剑齐发（1.5s）——剑阵炸开，万剑向四周齐射 =====
+  // ===== 第三阶段：万剑齐发（1.5s）——全屏剑雨覆盖 =====
   setTimeout(() => {
-    // 剑阵收束后炸开——清空剑阵
     swordArrayParticles = [];
-    // 万剑齐发：24柄光剑从中心向外辐射（如星河瀑布）
-    for (let i = 0; i < 24; i++) {
-      const angle = (Math.PI * 2 * i) / 24 + Math.random() * 0.15;
-      const speed = 8 + Math.random() * 4;
-      spawnFlyingSword(cx, cy - 20, Math.cos(angle) * speed, Math.sin(angle) * speed, angle + Math.PI / 2, 28 + Math.random() * 8, swordColor, 800);
-      // 剑光拖尾
-      spawnBeam(cx, cy - 20, angle, 40, 3, swordColor, 300);
+    // 第一波：36柄光剑全方向辐射（覆盖360度全屏）
+    for (let i = 0; i < 36; i++) {
+      const angle = (Math.PI * 2 * i) / 36 + Math.random() * 0.1;
+      const speed = 10 + Math.random() * 5;
+      spawnFlyingSword(cx, cy - 20, Math.cos(angle) * speed, Math.sin(angle) * speed, angle + Math.PI / 2, 30 + Math.random() * 10, swordColor, 1000);
+      spawnBeam(cx, cy - 20, angle, 60, 4, swordColor, 400);
     }
-    // 中心爆发
-    spawnShockwave(cx, cy - 20, "#ffffff", 100, 600);
-    spawnShockwave(cx, cy - 20, swordColor, 130, 800);
-    // 金色粒子填充
-    for (let i = 0; i < 20; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      spawnDot(cx, cy - 20, Math.cos(angle) * 5, Math.sin(angle) * 5, swordColor, 3, 700, 0.02);
-    }
-    shakeAmp = 12;
-    flashAlpha = 0.2;
-  }, 1500);
-  // ===== 第四阶段：归宗收束（2.5s）——所有剑回收汇聚成一束光 =====
-  setTimeout(() => {
-    // 万剑归宗：从四周飞回中心
+    // 延迟200ms第二波：从天顶垂直降下的剑雨（覆盖大范围）
+    setTimeout(() => {
+      for (let i = 0; i < 30; i++) {
+        const sx = cx + (Math.random() - 0.5) * 400;
+        const sy = -30 - Math.random() * 100;
+        const tx = cx + (Math.random() - 0.5) * 200;
+        const ty = cy + (Math.random() - 0.5) * 80;
+        const dx = tx - sx, dy = ty - sy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const vx = dx / dist * 12, vy = dy / dist * 12;
+        spawnFlyingSword(sx, sy, vx, vy, Math.atan2(vy, vx) + Math.PI / 2, 26 + Math.random() * 8, swordColor, 800);
+        spawnBeam(sx, sy, Math.atan2(vy, vx), 50, 3, swordColor, 300);
+      }
+    }, 200);
+    // 全屏冲击波（双层，比雷劫大得多）
+    spawnShockwave(cx, cy - 20, "#ffffff", 220, 1000);
+    spawnShockwave(cx, cy - 20, swordColor, 180, 1200);
+    // 全方向金光辐射（16条长光束）
     for (let i = 0; i < 16; i++) {
+      const angle = (Math.PI * 2 * i) / 16;
+      spawnBeam(cx, cy - 20, angle, 120, 6, swordColor, 700);
+    }
+    // 金色粒子全屏填充
+    for (let i = 0; i < 36; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const dist = 100 + Math.random() * 60;
+      spawnDot(cx, cy - 20, Math.cos(angle) * (4 + Math.random() * 6), Math.sin(angle) * (4 + Math.random() * 6), swordColor, 4, 900, 0.02);
+    }
+    shakeAmp = 16;
+    flashAlpha = 0.3;
+  }, 1500);
+  // ===== 第四阶段：归宗收束（2.8s）——全屏万剑回收 =====
+  setTimeout(() => {
+    // 24柄剑从全屏各处飞回
+    for (let i = 0; i < 24; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 180 + Math.random() * 100;
       const sx = cx + Math.cos(angle) * dist;
       const sy = cy - 20 + Math.sin(angle) * dist * 0.5;
-      const vx = (cx - sx) / 20;
-      const vy = (cy - 20 - sy) / 20;
-      spawnFlyingSword(sx, sy, vx, vy, Math.atan2(vy, vx) + Math.PI / 2, 18, swordColor, 400);
+      const vx = (cx - sx) / 25;
+      const vy = (cy - 20 - sy) / 25;
+      spawnFlyingSword(sx, sy, vx, vy, Math.atan2(vy, vx) + Math.PI / 2, 20, swordColor, 500);
     }
     // 汇聚光柱（向上冲天）
     setTimeout(() => {
@@ -602,68 +621,103 @@ function spellSwords(cx, cy) {
   }, 2500);
 }
 
-// 天地同寿：五色法阵 + 旋转光柱 + 全屏冲击波（4s，终极）
+// 天地同寿：终极法术（8000灵石）——天地崩灭
+// 必须是所有法术中范围最大、气势最强、时长最长的。
+// 四阶段：天象异变→五色巨型法阵→灭世光柱→天地崩灭全屏冲击
 function spellArmageddon(cx, cy) {
   const colors = ["#ffd700", "#22c55e", "#3b82f6", "#ef4444", "#a855f7"]; // 金木水火土
-  // ===== 第一阶段：法阵展开（0-800ms）——五色法阵旋转凝聚 =====
-  for (let phase = 0; phase < 4; phase++) {
+  // ===== 第一阶段：天象异变（0-600ms）——全屏五色流星雨预警 =====
+  for (let i = 0; i < 20; i++) {
     setTimeout(() => {
-      // 法阵环（每层不同颜色，旋转扩散）
-      const color = colors[phase];
-      spawnShockwave(cx, cy, color, 60 + phase * 20, 800);
-      // 法阵光芒线（五角星方向）
-      for (let i = 0; i < 5; i++) {
-        const angle = (Math.PI * 2 * i) / 5 + phase * 0.3;
-        spawnBeam(cx, cy, angle, 40 + phase * 10, 3, color, 500);
-      }
-    }, phase * 200);
+      const sx = Math.random() * canvas.width;
+      const sy = -20;
+      const color = colors[Math.floor(Math.random() * 5)];
+      // 流星从天顶斜划而下
+      spawnBeam(sx, sy, Math.PI / 2 + (Math.random() - 0.5) * 0.5, 80 + Math.random() * 40, 4, color, 600);
+      spawnDot(sx, sy + 40, 0, 4 + Math.random() * 3, color, 4, 800, 0.05);
+    }, i * 25);
   }
-  // ===== 第二阶段：五色光柱冲天（800ms-1.5s） =====
-  setTimeout(() => {
-    // 主光柱（白色核心 + 五色外层）
-    spawnBeam(cx, cy, -Math.PI / 2, 200, 30, "#ffffff", 800);
-    for (let i = 0; i < 5; i++) {
-      const offset = (i - 2) * 6;
-      spawnBeam(cx + offset, cy, -Math.PI / 2 + (i - 2) * 0.05, 180, 12, colors[i], 800);
-    }
-    // 五色粒子柱上升
-    for (let c of colors) {
+  // ===== 第二阶段：五色巨型法阵（600ms-1.4s）——大范围多层法阵展开 =====
+  for (let phase = 0; phase < 5; phase++) {
+    setTimeout(() => {
+      const color = colors[phase];
+      // 法阵环（每层比万剑诀的法阵更大：100-220px）
+      spawnShockwave(cx, cy, color, 100 + phase * 30, 1200);
+      // 法阵光芒线（每层10条，长度递增）
+      for (let i = 0; i < 10; i++) {
+        const angle = (Math.PI * 2 * i) / 10 + phase * 0.4;
+        spawnBeam(cx, cy, angle, 60 + phase * 20, 4, color, 700);
+      }
+      // 法阵旋转粒子
       for (let i = 0; i < 8; i++) {
-        const ox = (Math.random() - 0.5) * 40;
-        spawnDot(cx + ox, cy, (Math.random() - 0.5) * 1, -8 - Math.random() * 4, c, 5, 1500, -0.03);
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 80 + phase * 20;
+        spawnDot(cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist, 0, 0, color, 3, 800, 0);
+      }
+    }, 600 + phase * 160);
+  }
+  // ===== 第三阶段：灭世光柱（1.4s-2.2s）——巨型光柱冲天 + 地裂 =====
+  setTimeout(() => {
+    // 巨型主光柱（贯穿屏幕高度，宽40px——万剑诀的光柱才120px长10宽）
+    spawnBeam(cx, cy, -Math.PI / 2, canvas.height, 50, "#ffffff", 1200);
+    // 五色外层光柱（比万剑诀宽3倍）
+    for (let i = 0; i < 5; i++) {
+      const offset = (i - 2) * 12;
+      spawnBeam(cx + offset, cy, -Math.PI / 2 + (i - 2) * 0.03, canvas.height * 0.9, 20, colors[i], 1200);
+    }
+    // 五色粒子瀑布（大量上升）
+    for (let c of colors) {
+      for (let i = 0; i < 16; i++) {
+        const ox = (Math.random() - 0.5) * 60;
+        spawnDot(cx + ox, cy, (Math.random() - 0.5) * 1.5, -10 - Math.random() * 6, c, 5, 1800, -0.03);
       }
     }
+    // 地裂冲击波（向下/向外）
+    spawnShockwave(cx, cy, "#ffffff", 200, 1000);
     // 五色图标上升
-    spawnSpellParticle("armageddon", cx, cy, 0, -6, 30, 1500, -0.02, 0);
-    flashAlpha = 0.3;
-    shakeAmp = 12;
-  }, 800);
-  // ===== 第三阶段：全屏绽放（1.8s）——终极爆发 =====
-  setTimeout(() => {
-    // 全屏冲击波（5层五色）
     for (let i = 0; i < 5; i++) {
-      setTimeout(() => spawnShockwave(cx, cy, colors[i], 250, 1200), i * 80);
+      const ox = (i - 2) * 15;
+      spawnSpellParticle("armageddon", cx + ox, cy, 0, -7, 36, 1800, -0.02, 0);
     }
-    // 五色图标四散
-    for (let i = 0; i < 15; i++) {
+    flashAlpha = 0.35;
+    shakeAmp = 16;
+  }, 1400);
+  // ===== 第四阶段：天地崩灭（2.2s-3.5s）——全屏五色毁灭爆发 =====
+  setTimeout(() => {
+    // 全屏多层冲击波（5层，每层350px——覆盖整个屏幕）
+    for (let i = 0; i < 5; i++) {
+      setTimeout(() => spawnShockwave(cx, cy, colors[i], 400, 1800), i * 100);
+    }
+    // 全屏五色光束（24条，覆盖360度，长度200px）
+    for (let i = 0; i < 24; i++) {
+      const angle = (Math.PI * 2 * i) / 24;
+      spawnBeam(cx, cy, angle, 200, 8, colors[i % 5], 1000);
+    }
+    // 五色图标全屏四散（20个）
+    for (let i = 0; i < 20; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 5 + Math.random() * 6;
-      spawnSpellParticle("armageddon", cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, 28, 1800, 0.02, Math.random() * Math.PI);
+      const speed = 6 + Math.random() * 8;
+      spawnSpellParticle("armageddon", cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, 32, 2000, 0.02, Math.random() * Math.PI);
     }
-    // 五色光束辐射（全方向）
-    for (let i = 0; i < 16; i++) {
-      const angle = (Math.PI * 2 * i) / 16;
-      spawnBeam(cx, cy, angle, 120, 6, colors[i % 5], 700);
-    }
-    // 彩色粒子全屏爆发
-    for (let i = 0; i < 60; i++) {
+    // 彩色粒子全屏风暴（100颗——所有法术最多）
+    for (let i = 0; i < 100; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 5 + Math.random() * 8;
-      spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, colors[Math.floor(Math.random() * 5)], 5, 1800, 0.02);
+      const speed = 6 + Math.random() * 10;
+      spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, colors[Math.floor(Math.random() * 5)], 5, 2200, 0.02);
     }
-    shakeAmp = 18;
-    flashAlpha = 0.4;
-  }, 1800);
+    // 第二波延迟爆发（2.8s）
+    setTimeout(() => {
+      spawnShockwave(cx, cy, "#ffffff", 500, 1500);
+      for (let i = 0; i < 40; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 4 + Math.random() * 6;
+        spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, colors[Math.floor(Math.random() * 5)], 4, 2000, 0.01);
+      }
+      flashAlpha = 0.25;
+    }, 600);
+    shakeAmp = 22; // 所有法术最强震屏
+    flashAlpha = 0.45; // 最强闪光
+  }, 2200);
 }
 
 // ===== 预渲染发光球（避免每帧 createRadialGradient 的性能开销）=====
