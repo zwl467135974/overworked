@@ -599,142 +599,200 @@ function drawMountSword(t) {
   }
 }
 
-// 2. 葫芦：横版侧躺（经典骑葫芦造型），桌宠坐在葫芦肚子上
+// 2. 葫芦：横版骑葫芦——清晰轮廓+腹纹+叶蒂+飘带+光晕
 function drawMountGourd(t) {
   const y = 40;
   const float = Math.sin(t * 1.5) * 1.5;
-  // ===== 灵气缭绕（底部雾气，两侧飘） =====
-  for (let i = 0; i < 6; i++) {
-    const px = -36 + i * 14 + Math.sin(t * 1.2 + i) * 4;
-    const py = y + 8 + Math.sin(t * 1.5 + i) * 3;
-    const g = ctx.createRadialGradient(px, py, 0, px, py, 10);
-    g.addColorStop(0, "rgba(220,200,140,0.25)");
-    g.addColorStop(1, "rgba(200,180,120,0)");
-    ctx.fillStyle = g;
+  const yy = y + float;
+  // ===== 灵气雾（底部，简化为发光带不调gradient）=====
+  ctx.fillStyle = "rgba(220,200,140,0.12)";
+  for (let i = 0; i < 4; i++) {
+    const px = -30 + i * 16 + Math.sin(t * 1.2 + i) * 4;
     ctx.beginPath();
-    ctx.arc(px, py, 10, 0, Math.PI * 2);
+    ctx.ellipse(px, yy + 10, 10, 4, 0, 0, Math.PI * 2);
     ctx.fill();
   }
-  // ===== 葫芦主体（横躺，左小右大） =====
-  // 大肚（右侧主球，桌宠坐在这上面）
+  // ===== 葫芦大肚（右）——清晰轮廓+渐变着色 =====
   const bigX = 6;
-  const g1 = ctx.createRadialGradient(bigX - 4, y - 4 + float, 2, bigX, y + float, 22);
-  g1.addColorStop(0, "rgba(255,245,160,0.95)");
-  g1.addColorStop(0.4, "rgba(255,220,80,0.85)");
-  g1.addColorStop(0.8, "rgba(200,160,40,0.6)");
-  g1.addColorStop(1, "rgba(160,120,20,0)");
-  ctx.fillStyle = g1;
+  // 主体填充
+  ctx.fillStyle = "rgba(255,230,100,0.8)";
   ctx.beginPath();
-  ctx.ellipse(bigX, y + float, 22, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(bigX, yy, 22, 16, 0, 0, Math.PI * 2);
   ctx.fill();
-  // 小肚（左侧上球）
-  const smallX = -16;
-  const g2 = ctx.createRadialGradient(smallX - 2, y - 6 + float, 0, smallX, y - 2 + float, 14);
-  g2.addColorStop(0, "rgba(255,240,150,0.9)");
-  g2.addColorStop(0.6, "rgba(220,180,50,0.7)");
-  g2.addColorStop(1, "rgba(180,140,30,0)");
-  ctx.fillStyle = g2;
-  ctx.beginPath();
-  ctx.ellipse(smallX, y - 2 + float, 14, 11, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // 葫芦腰（连接处收窄阴影）
-  ctx.strokeStyle = "rgba(160,120,20,0.4)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(-6, y - 8 + float);
-  ctx.lineTo(-2, y + 4 + float);
-  ctx.stroke();
-  // 葫芦口（最左端，朝左翘起）
-  ctx.fillStyle = "rgba(255,210,90,0.7)";
-  ctx.beginPath();
-  ctx.ellipse(-28, y - 6 + float, 4, 3, -0.3, 0, Math.PI * 2);
-  ctx.fill();
-  // 腰带（红绳缠绕葫芦腰）
-  ctx.strokeStyle = "rgba(220,60,40,0.6)";
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(-8, y - 10 + float);
-  ctx.quadraticCurveTo(-4, y - 4 + float, -2, y + 2 + float);
-  ctx.stroke();
-  // 高光（葫芦肚子上的光泽）
+  // 腹部纵向纹路（葫芦特有的沟纹）
+  ctx.strokeStyle = "rgba(200,160,40,0.4)";
+  ctx.lineWidth = 1;
+  for (let i = -2; i <= 2; i++) {
+    const rx = bigX + i * 5;
+    ctx.beginPath();
+    ctx.ellipse(rx, yy, 3, 15, 0, 0, Math.PI);
+    ctx.stroke();
+  }
+  // 高光
   ctx.fillStyle = "rgba(255,255,220,0.35)";
   ctx.beginPath();
-  ctx.ellipse(bigX - 6, y - 8 + float, 6, 3, -0.3, 0, Math.PI * 2);
+  ctx.ellipse(bigX - 6, yy - 8, 7, 3, -0.3, 0, Math.PI * 2);
   ctx.fill();
-}
-
-// 3. 青龙：龙身蜿蜒 + 龙头龙须龙鳞 + 龙爪
-function drawMountDragon(t) {
-  const y = 38;
-  // ===== 龙身外层光晕（发光体） =====
-  ctx.strokeStyle = "rgba(100,255,150,0.25)";
-  ctx.lineWidth = 14;
-  ctx.lineCap = "round";
-  drawDragonBody(t, y);
-  // ===== 龙身主体（青绿） =====
-  ctx.strokeStyle = "rgba(60,200,100,0.6)";
-  ctx.lineWidth = 9;
-  drawDragonBody(t, y);
-  // ===== 龙身高光（亮绿） =====
-  ctx.strokeStyle = "rgba(160,255,180,0.4)";
-  ctx.lineWidth = 4;
-  drawDragonBody(t, y);
-  // ===== 龙鳞（沿身体的点阵） =====
-  ctx.fillStyle = "rgba(180,255,200,0.5)";
-  for (let i = 1; i < 18; i += 2) {
-    const px = -34 + i * 4;
-    const py = y + Math.sin(i * 0.4 + t * 2) * 7;
+  // ===== 葫芦小肚（左）=====
+  const smallX = -16;
+  ctx.fillStyle = "rgba(255,220,90,0.75)";
+  ctx.beginPath();
+  ctx.ellipse(smallX, yy - 2, 14, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 小肚纹路
+  ctx.strokeStyle = "rgba(200,160,40,0.3)";
+  ctx.lineWidth = 0.8;
+  for (let i = -1; i <= 1; i++) {
     ctx.beginPath();
-    ctx.arc(px, py - 3, 1.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.ellipse(smallX + i * 4, yy - 2, 2, 10, 0, 0, Math.PI);
+    ctx.stroke();
   }
-  // ===== 龙头（右端，详细造型） =====
-  const headX = 38;
-  const headY = y + Math.sin(17 * 0.4 + t * 2) * 7;
-  // 龙头光晕
-  const hg = ctx.createRadialGradient(headX, headY, 0, headX, headY, 14);
-  hg.addColorStop(0, "rgba(140,255,160,0.7)");
-  hg.addColorStop(1, "rgba(60,200,100,0)");
-  ctx.fillStyle = hg;
+  // ===== 葫芦腰（收窄处）— 深色腰带 =====
+  ctx.strokeStyle = "rgba(140,100,20,0.5)";
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(headX, headY, 14, 0, Math.PI * 2);
-  ctx.fill();
-  // 龙头主体
-  ctx.fillStyle = "rgba(80,220,120,0.7)";
+  ctx.moveTo(-8, yy - 6);
+  ctx.quadraticCurveTo(-6, yy, -4, yy + 4);
+  ctx.stroke();
+  // ===== 红绳腰带 + 飘带 =====
+  ctx.strokeStyle = "rgba(220,60,40,0.7)";
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.ellipse(headX, headY, 9, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // 龙角（双角后掠）
-  ctx.strokeStyle = "rgba(200,255,180,0.6)";
+  ctx.moveTo(-9, yy - 8);
+  ctx.quadraticCurveTo(-5, yy - 2, -3, yy + 4);
+  ctx.stroke();
+  // 飘带（随风飘动）
+  ctx.strokeStyle = "rgba(220,60,40,0.5)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(headX - 2, headY - 6);
-  ctx.quadraticCurveTo(headX - 6, headY - 12, headX - 10, headY - 14);
-  ctx.moveTo(headX + 2, headY - 5);
-  ctx.quadraticCurveTo(headX, headY - 11, headX - 4, headY - 14);
+  ctx.moveTo(-5, yy - 6);
+  ctx.quadraticCurveTo(-10 + Math.sin(t * 2) * 3, yy - 2, -14 + Math.sin(t * 2.5) * 4, yy + 2);
   ctx.stroke();
-  // 龙眼（发光金瞳）
-  ctx.fillStyle = "rgba(255,240,100,0.95)";
   ctx.beginPath();
-  ctx.arc(headX + 3, headY - 1, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  ctx.moveTo(-5, yy + 2);
+  ctx.quadraticCurveTo(-12 + Math.sin(t * 2.3) * 3, yy + 6, -16 + Math.sin(t * 2.8) * 4, yy + 8);
+  ctx.stroke();
+  // ===== 葫芦口（左端翘起）+ 叶蒂 =====
+  ctx.fillStyle = "rgba(255,200,80,0.7)";
   ctx.beginPath();
-  ctx.arc(headX + 4, headY - 2, 1, 0, Math.PI * 2);
+  ctx.ellipse(-28, yy - 4, 4, 3, -0.4, 0, Math.PI * 2);
   ctx.fill();
-  // 龙须（两根飘动的长须）
-  ctx.strokeStyle = "rgba(180,255,200,0.5)";
+  // 叶蒂（葫芦口的叶片）
+  ctx.strokeStyle = "rgba(80,180,80,0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-30, yy - 4);
+  ctx.quadraticCurveTo(-34, yy - 8, -32 + Math.sin(t * 2) * 2, yy - 12);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-30, yy - 4);
+  ctx.quadraticCurveTo(-36, yy - 2, -34 + Math.sin(t * 2.5) * 2, yy + 2);
+  ctx.stroke();
+}
+
+// 3. 青龙：蜿蜒龙身——背鳍+腹甲+龙爪+鬃鬣+金瞳龙须
+function drawMountDragon(t) {
+  const y = 38;
+  // 计算身体点列（复用于多层绘制）
+  const pts = [];
+  for (let i = 0; i <= 18; i++) {
+    pts.push({ x: -34 + i * 4, y: y + Math.sin(i * 0.4 + t * 2) * 7 });
+  }
+  // ===== 外层光晕 =====
+  ctx.strokeStyle = "rgba(100,255,150,0.2)";
+  ctx.lineWidth = 14;
+  ctx.lineCap = "round";
+  strokePath(pts);
+  // ===== 龙身主体（青绿渐变模拟）=====
+  ctx.strokeStyle = "rgba(40,180,90,0.7)";
+  ctx.lineWidth = 9;
+  strokePath(pts);
+  // ===== 龙身高光（亮绿脊线）=====
+  ctx.strokeStyle = "rgba(140,255,170,0.5)";
+  ctx.lineWidth = 3;
+  strokePath(pts.map(p => ({ x: p.x, y: p.y - 2 }))); // 脊线偏上
+  // ===== 背鳍（沿脊背的一排尖鳍）=====
+  ctx.fillStyle = "rgba(80,220,120,0.5)";
+  for (let i = 2; i < 16; i += 2) {
+    const p = pts[i];
+    ctx.beginPath();
+    ctx.moveTo(p.x - 2, p.y - 4);
+    ctx.lineTo(p.x, p.y - 9);
+    ctx.lineTo(p.x + 2, p.y - 4);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // ===== 腹甲条纹（身体下方横纹）=====
+  ctx.strokeStyle = "rgba(180,255,200,0.4)";
+  ctx.lineWidth = 1;
+  for (let i = 3; i < 16; i += 2) {
+    const p = pts[i];
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y + 2);
+    ctx.lineTo(p.x, p.y + 5);
+    ctx.stroke();
+  }
+  // ===== 龙头（右端）=====
+  const head = pts[18];
+  // 龙头轮廓（梯形头）
+  ctx.fillStyle = "rgba(60,200,100,0.75)";
+  ctx.beginPath();
+  ctx.moveTo(head.x - 2, head.y - 6);
+  ctx.lineTo(head.x + 8, head.y - 4);
+  ctx.lineTo(head.x + 10, head.y);
+  ctx.lineTo(head.x + 8, head.y + 4);
+  ctx.lineTo(head.x - 2, head.y + 6);
+  ctx.closePath();
+  ctx.fill();
+  // 龙头光晕
+  ctx.fillStyle = "rgba(140,255,160,0.3)";
+  ctx.beginPath();
+  ctx.arc(head.x + 3, head.y, 13, 0, Math.PI * 2);
+  ctx.fill();
+  // 龙角（双角后掠，带分叉）
+  ctx.strokeStyle = "rgba(220,255,200,0.7)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(head.x - 1, head.y - 5);
+  ctx.quadraticCurveTo(head.x - 5, head.y - 11, head.x - 9, head.y - 14);
+  ctx.moveTo(head.x - 7, head.y - 12);
+  ctx.lineTo(head.x - 10, head.y - 11);
+  ctx.moveTo(head.x + 2, head.y - 4);
+  ctx.quadraticCurveTo(head.x, head.y - 10, head.x - 3, head.y - 14);
+  ctx.stroke();
+  // 龙眼（金瞳+白光）
+  ctx.fillStyle = "rgba(255,230,80,0.95)";
+  ctx.beginPath();
+  ctx.arc(head.x + 4, head.y - 1, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.beginPath();
+  ctx.arc(head.x + 5, head.y - 2, 1, 0, Math.PI * 2);
+  ctx.fill();
+  // 龙须（飘动）
+  ctx.strokeStyle = "rgba(180,255,200,0.6)";
   ctx.lineWidth = 1;
   for (const dy of [-2, 2]) {
     ctx.beginPath();
-    ctx.moveTo(headX + 6, headY + dy);
-    ctx.quadraticCurveTo(headX + 14, headY + dy + Math.sin(t * 3 + dy) * 3, headX + 20, headY + dy + 6 + Math.sin(t * 2 + dy) * 4);
+    ctx.moveTo(head.x + 9, head.y + dy);
+    ctx.quadraticCurveTo(head.x + 16, head.y + dy + Math.sin(t * 3 + dy) * 3, head.x + 22, head.y + dy + 6 + Math.sin(t * 2 + dy) * 4);
     ctx.stroke();
   }
-  // ===== 龙爪（下方两只爪，抓云） =====
-  ctx.strokeStyle = "rgba(80,220,120,0.6)";
+  // ===== 鬃鬣（头后颈部的鬃毛）=====
+  ctx.strokeStyle = "rgba(100,255,150,0.5)";
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 4; i++) {
+    const mx = head.x - 4 - i * 3;
+    const my = head.y - 5;
+    ctx.beginPath();
+    ctx.moveTo(mx, my);
+    ctx.quadraticCurveTo(mx - 2 + Math.sin(t * 3 + i) * 2, my - 5, mx - 1 + Math.sin(t * 2 + i) * 3, my - 9);
+    ctx.stroke();
+  }
+  // ===== 龙爪（两只，三趾）=====
+  ctx.strokeStyle = "rgba(60,200,100,0.7)";
   ctx.lineWidth = 2;
-  for (const cx of [-12, 12]) {
+  for (const cx of [-12, 10]) {
     const cy = y + 8;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
@@ -744,228 +802,265 @@ function drawMountDragon(t) {
     ctx.moveTo(cx, cy);
     ctx.lineTo(cx + 3, cy + 5);
     ctx.stroke();
+    // 爪尖
+    ctx.fillStyle = "rgba(255,250,200,0.5)";
+    ctx.beginPath();
+    ctx.arc(cx - 3, cy + 5, 1, 0, Math.PI * 2);
+    ctx.arc(cx, cy + 6, 1, 0, Math.PI * 2);
+    ctx.arc(cx + 3, cy + 5, 1, 0, Math.PI * 2);
+    ctx.fill();
   }
-  // ===== 云气（龙脚下） =====
+  // ===== 云气（脚下）=====
+  ctx.fillStyle = "rgba(180,220,255,0.15)";
   for (let i = 0; i < 3; i++) {
     const cx = -16 + i * 16;
-    const cy = y + 12 + Math.sin(t + i) * 2;
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 10);
-    g.addColorStop(0, "rgba(180,220,255,0.2)");
-    g.addColorStop(1, "rgba(180,220,255,0)");
-    ctx.fillStyle = g;
+    const cy = y + 13 + Math.sin(t + i) * 2;
     ctx.beginPath();
-    ctx.ellipse(cx, cy, 10, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, 12, 4, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
-// 龙身曲线绘制（共用：外晕/主体/高光三层调用）
-function drawDragonBody(t, y) {
+// 路径描边辅助（青龙共用）
+function strokePath(pts) {
   ctx.beginPath();
-  for (let i = 0; i <= 18; i++) {
-    const px = -34 + i * 4;
-    const py = y + Math.sin(i * 0.4 + t * 2) * 7;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
+  for (let i = 0; i < pts.length; i++) {
+    if (i === 0) ctx.moveTo(pts[i].x, pts[i].y);
+    else ctx.lineTo(pts[i].x, pts[i].y);
   }
   ctx.stroke();
 }
 
-// 4. 麒麟：金甲瑞兽（身体+鬃毛+双角+鳞甲+祥云蹄）
+// 4. 麒麟：金甲瑞兽——甲片纹+鬃毛飘动+独角分叉+蹄踏祥云+金瞳
 function drawMountQilin(t) {
   const y = 38;
-  // ===== 祥云（四蹄踏云） =====
+  const float = Math.sin(t * 1.8) * 1;
+  const yy = y + float;
+  // ===== 祥云（四蹄踏云，简化不调gradient）=====
+  ctx.fillStyle = "rgba(255,230,160,0.2)";
   for (let i = 0; i < 4; i++) {
     const cx = -24 + i * 16;
-    const cy = y + 10 + Math.sin(t + i * 0.8) * 2;
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 14);
-    g.addColorStop(0, "rgba(255,230,160,0.35)");
-    g.addColorStop(0.6, "rgba(255,210,100,0.15)");
-    g.addColorStop(1, "rgba(255,200,100,0)");
-    ctx.fillStyle = g;
+    const cy = yy + 12 + Math.sin(t + i * 0.8) * 2;
     ctx.beginPath();
     ctx.ellipse(cx, cy, 14, 5, 0, 0, Math.PI * 2);
     ctx.fill();
   }
   // ===== 身体光晕 =====
-  const aura = ctx.createRadialGradient(0, y, 0, 0, y, 28);
-  aura.addColorStop(0, "rgba(255,220,100,0.2)");
-  aura.addColorStop(1, "rgba(255,200,50,0)");
-  ctx.fillStyle = aura;
+  ctx.fillStyle = "rgba(255,220,100,0.15)";
   ctx.beginPath();
-  ctx.ellipse(0, y, 28, 14, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, yy, 28, 14, 0, 0, Math.PI * 2);
   ctx.fill();
-  // ===== 身体（金色椭圆兽身） =====
-  const bg = ctx.createRadialGradient(-4, y - 4, 2, 0, y, 24);
-  bg.addColorStop(0, "rgba(255,245,160,0.85)");
-  bg.addColorStop(0.5, "rgba(240,200,60,0.7)");
-  bg.addColorStop(1, "rgba(180,140,30,0)");
-  ctx.fillStyle = bg;
+  // ===== 身体（金色兽身，清晰轮廓）=====
+  ctx.fillStyle = "rgba(240,200,60,0.7)";
   ctx.beginPath();
-  ctx.ellipse(0, y, 24, 12, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, yy, 24, 12, 0, 0, Math.PI * 2);
   ctx.fill();
-  // ===== 鳞甲（身体上的菱形鳞片点阵） =====
-  ctx.fillStyle = "rgba(255,250,180,0.3)";
+  // 高光
+  ctx.fillStyle = "rgba(255,250,170,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(-6, yy - 4, 14, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // ===== 甲片纹（身体上的鱼鳞甲）=====
+  ctx.strokeStyle = "rgba(180,140,30,0.4)";
+  ctx.lineWidth = 0.8;
   for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < 6; col++) {
-      const sx = -16 + col * 6 + (row % 2) * 3;
-      const sy = y - 3 + row * 5;
+    for (let col = 0; col < 7; col++) {
+      const sx = -18 + col * 5.5 + (row % 2) * 2.5;
+      const sy = yy - 3 + row * 5;
       ctx.beginPath();
-      ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(sx, sy, 2.5, Math.PI * 0.2, Math.PI * 0.8);
+      ctx.stroke();
     }
   }
-  // ===== 腿（四条，下方） =====
-  ctx.strokeStyle = "rgba(220,180,50,0.6)";
+  // ===== 腿（四条，带蹄）=====
+  ctx.strokeStyle = "rgba(220,180,50,0.7)";
   ctx.lineWidth = 3;
   ctx.lineCap = "round";
   for (const lx of [-16, -8, 8, 16]) {
     ctx.beginPath();
-    ctx.moveTo(lx, y + 6);
-    ctx.lineTo(lx + (lx < 0 ? -1 : 1), y + 12);
+    ctx.moveTo(lx, yy + 6);
+    ctx.lineTo(lx + (lx < 0 ? -1 : 1), yy + 12);
     ctx.stroke();
+    // 蹄（深色）
+    ctx.fillStyle = "rgba(120,90,20,0.6)";
+    ctx.beginPath();
+    ctx.arc(lx + (lx < 0 ? -1 : 1), yy + 12, 2, 0, Math.PI * 2);
+    ctx.fill();
   }
-  // ===== 鬃毛（背部一排火焰状鬃毛） =====
-  for (let i = 0; i < 5; i++) {
-    const mx = -14 + i * 7;
-    const my = y - 10;
-    const g = ctx.createLinearGradient(mx, my, mx, my - 8);
-    g.addColorStop(0, "rgba(255,200,80,0.6)");
-    g.addColorStop(1, "rgba(255,120,0,0)");
-    ctx.strokeStyle = g;
+  // ===== 鬃毛（背部，飘动的火焰鬃）=====
+  for (let i = 0; i < 6; i++) {
+    const mx = -16 + i * 6;
+    const my = yy - 10;
+    const sway = Math.sin(t * 2.5 + i * 0.5) * 2;
+    ctx.strokeStyle = "rgba(255,180,40,0.6)";
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(mx, my);
-    ctx.quadraticCurveTo(mx + 2, my - 5, mx, my - 9);
+    ctx.quadraticCurveTo(mx + 1 + sway, my - 5, mx + sway, my - 10);
+    ctx.stroke();
+    // 鬃毛尖亮色
+    ctx.strokeStyle = "rgba(255,240,120,0.4)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(mx + sway * 0.5, my - 5);
+    ctx.lineTo(mx + sway, my - 10);
     ctx.stroke();
   }
-  // ===== 头部（右前方，兽首） =====
-  const hx = 20;
-  const hy = y - 5;
-  const hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, 12);
-  hg.addColorStop(0, "rgba(255,250,170,0.85)");
-  hg.addColorStop(0.6, "rgba(240,200,60,0.6)");
-  hg.addColorStop(1, "rgba(200,160,40,0)");
-  ctx.fillStyle = hg;
+  // ===== 头部（右前，兽首轮廓）=====
+  const hx = 22;
+  const hy = yy - 5;
+  ctx.fillStyle = "rgba(240,200,60,0.75)";
   ctx.beginPath();
   ctx.ellipse(hx, hy, 10, 8, 0, 0, Math.PI * 2);
   ctx.fill();
-  // ===== 双角（分叉鹿角造型） =====
-  ctx.strokeStyle = "rgba(255,240,180,0.7)";
+  // 头部高光
+  ctx.fillStyle = "rgba(255,250,170,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(hx - 2, hy - 3, 5, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // ===== 独角（分叉鹿角，更精致）=====
+  ctx.strokeStyle = "rgba(255,240,180,0.8)";
   ctx.lineWidth = 1.5;
-  // 左角
+  // 主干
   ctx.beginPath();
-  ctx.moveTo(hx - 2, hy - 6);
-  ctx.lineTo(hx - 4, hy - 12);
-  ctx.moveTo(hx - 4, hy - 9);
-  ctx.lineTo(hx - 7, hy - 11);
+  ctx.moveTo(hx, hy - 6);
+  ctx.quadraticCurveTo(hx + 1, hy - 11, hx + 3, hy - 15);
   ctx.stroke();
-  // 右角
+  // 分叉
   ctx.beginPath();
-  ctx.moveTo(hx + 2, hy - 6);
-  ctx.lineTo(hx + 4, hy - 13);
-  ctx.moveTo(hx + 4, hy - 10);
-  ctx.lineTo(hx + 7, hy - 12);
+  ctx.moveTo(hx + 1, hy - 10);
+  ctx.lineTo(hx - 2, hy - 12);
+  ctx.moveTo(hx + 2, hy - 13);
+  ctx.lineTo(hx + 5, hy - 14);
   ctx.stroke();
-  // ===== 眼睛 =====
-  ctx.fillStyle = "rgba(255,240,100,0.9)";
+  // 角尖发光
+  ctx.fillStyle = "rgba(255,255,200,0.6)";
   ctx.beginPath();
-  ctx.arc(hx + 4, hy - 1, 1.5, 0, Math.PI * 2);
+  ctx.arc(hx + 3, hy - 15, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  // ===== 金瞳 =====
+  ctx.fillStyle = "rgba(255,230,80,0.95)";
+  ctx.beginPath();
+  ctx.arc(hx + 4, hy - 1, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  ctx.beginPath();
+  ctx.arc(hx + 4.5, hy - 1.5, 0.8, 0, Math.PI * 2);
   ctx.fill();
 }
 
-// 5. 凤凰：火凤（凤冠+长尾羽翎+展翅+凤目）
+// 5. 凤凰：火凤——分层翎羽翅膀+凤冠+长翎尾羽+烈焰拖尾
 function drawMountPhoenix(t) {
   const y = 36;
+  const float = Math.sin(t * 1.8) * 1.5;
+  const yy = y + float;
   const wingFlap = Math.sin(t * 4) * 0.25;
-  // ===== 翅膀（左右各展，多根分层羽毛） =====
-  drawPhoenixWing(-3, y - 2, -1, wingFlap);
-  drawPhoenixWing(3, y - 2, 1, wingFlap);
-  // ===== 身体（火红椭圆 + 光晕） =====
-  const aura = ctx.createRadialGradient(0, y, 0, 0, y, 20);
-  aura.addColorStop(0, "rgba(255,200,80,0.25)");
-  aura.addColorStop(1, "rgba(255,100,0,0)");
-  ctx.fillStyle = aura;
+  // ===== 翅膀（分层翎羽，每根羽毛独立形状）=====
+  drawPhoenixWing(-3, yy - 2, -1, wingFlap);
+  drawPhoenixWing(3, yy - 2, 1, wingFlap);
+  // ===== 身体（火红，清晰轮廓+高光）=====
+  ctx.fillStyle = "rgba(255,150,40,0.7)";
   ctx.beginPath();
-  ctx.arc(0, y, 20, 0, Math.PI * 2);
+  ctx.ellipse(0, yy, 13, 9, 0, 0, Math.PI * 2);
   ctx.fill();
-  const bg = ctx.createRadialGradient(-2, y - 2, 1, 0, y, 14);
-  bg.addColorStop(0, "rgba(255,230,120,0.9)");
-  bg.addColorStop(0.5, "rgba(255,140,40,0.7)");
-  bg.addColorStop(1, "rgba(200,60,0,0)");
-  ctx.fillStyle = bg;
+  // 胸前高光
+  ctx.fillStyle = "rgba(255,230,120,0.4)";
   ctx.beginPath();
-  ctx.ellipse(0, y, 13, 9, 0, 0, Math.PI * 2);
+  ctx.ellipse(-2, yy - 2, 8, 5, 0, 0, Math.PI * 2);
   ctx.fill();
-  // ===== 凤头（前方） + 凤冠 =====
+  // 身体光晕
+  ctx.fillStyle = "rgba(255,150,40,0.12)";
+  ctx.beginPath();
+  ctx.arc(0, yy, 22, 0, Math.PI * 2);
+  ctx.fill();
+  // ===== 凤头 + 凤冠 =====
   const hx = 10;
-  const hy = y - 4;
-  const hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, 9);
-  hg.addColorStop(0, "rgba(255,220,100,0.85)");
-  hg.addColorStop(1, "rgba(255,120,20,0)");
-  ctx.fillStyle = hg;
+  const hy = yy - 4;
+  ctx.fillStyle = "rgba(255,180,50,0.8)";
   ctx.beginPath();
-  ctx.arc(hx, hy, 9, 0, Math.PI * 2);
+  ctx.arc(hx, hy, 8, 0, Math.PI * 2);
   ctx.fill();
-  // 凤冠（头顶三根冠羽，上翘）
-  ctx.strokeStyle = "rgba(255,180,50,0.7)";
-  ctx.lineWidth = 1.5;
+  // 凤冠（三根冠羽，飘动）
+  ctx.strokeStyle = "rgba(255,200,80,0.8)";
+  ctx.lineWidth = 2;
   for (let i = -1; i <= 1; i++) {
+    const sway = Math.sin(t * 3 + i) * 2;
     ctx.beginPath();
-    ctx.moveTo(hx + i * 2, hy - 6);
-    ctx.quadraticCurveTo(hx + i * 3, hy - 10, hx + i * 4, hy - 13);
+    ctx.moveTo(hx + i * 2, hy - 5);
+    ctx.quadraticCurveTo(hx + i * 3 + sway, hy - 9, hx + i * 4 + sway, hy - 13);
     ctx.stroke();
+    // 冠羽尖发光
+    ctx.fillStyle = "rgba(255,255,180,0.5)";
+    ctx.beginPath();
+    ctx.arc(hx + i * 4 + sway, hy - 13, 1.2, 0, Math.PI * 2);
+    ctx.fill();
   }
-  // 凤目
-  ctx.fillStyle = "rgba(255,255,200,0.9)";
+  // 凤目（亮金）
+  ctx.fillStyle = "rgba(255,250,180,0.95)";
   ctx.beginPath();
   ctx.arc(hx + 3, hy - 1, 1.5, 0, Math.PI * 2);
   ctx.fill();
-  // ===== 长尾羽翎（后方，3根长翎+渐隐火焰） =====
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  ctx.beginPath();
+  ctx.arc(hx + 3.5, hy - 1.5, 0.7, 0, Math.PI * 2);
+  ctx.fill();
+  // 凤喙（尖嘴）
+  ctx.strokeStyle = "rgba(255,220,100,0.7)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(hx + 7, hy);
+  ctx.lineTo(hx + 12, hy + 1);
+  ctx.stroke();
+  // ===== 长尾翎羽（后方，3根+烈焰拖尾）=====
   for (let i = 0; i < 3; i++) {
-    const offset = (i - 1) * 4;
-    const wave = Math.sin(t * 2.5 + i) * 3;
+    const offset = (i - 1) * 5;
+    const wave = Math.sin(t * 2.5 + i) * 4;
     // 主翎杆
-    const g = ctx.createLinearGradient(-8, y, -40, y + offset + wave);
-    g.addColorStop(0, "rgba(255,180,60,0.7)");
-    g.addColorStop(0.5, "rgba(255,100,20,0.5)");
-    g.addColorStop(1, "rgba(255,60,0,0)");
-    ctx.strokeStyle = g;
-    ctx.lineWidth = 3 - i * 0.5;
+    ctx.strokeStyle = "rgba(255,160,40,0.7)";
+    ctx.lineWidth = 3 - i * 0.4;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(-8, y + offset);
-    ctx.quadraticCurveTo(-22, y + offset + wave * 0.5, -38, y + offset + wave);
+    ctx.moveTo(-8, yy + offset);
+    ctx.quadraticCurveTo(-22, yy + offset + wave * 0.5, -40, yy + offset + wave);
     ctx.stroke();
-    // 翎眼（尾羽末端的彩色眼斑）
-    const tx = -36;
-    const ty = y + offset + wave;
-    const eg = ctx.createRadialGradient(tx, ty, 0, tx, ty, 4);
-    eg.addColorStop(0, "rgba(180,80,255,0.6)");
-    eg.addColorStop(0.5, "rgba(255,100,40,0.4)");
-    eg.addColorStop(1, "rgba(255,60,0,0)");
-    ctx.fillStyle = eg;
+    // 翎眼（尾羽末端彩色眼斑）
+    const tx = -38;
+    const ty = yy + offset + wave;
+    ctx.fillStyle = "rgba(180,80,255,0.5)";
     ctx.beginPath();
-    ctx.arc(tx, ty, 4, 0, Math.PI * 2);
+    ctx.arc(tx, ty, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,200,60,0.4)";
+    ctx.beginPath();
+    ctx.arc(tx, ty, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // ===== 烈焰拖尾（后方持续飘动的火焰粒子）=====
+  for (let i = 0; i < 5; i++) {
+    const fx = -12 - i * 6 + Math.sin(t * 3 + i) * 3;
+    const fy = yy + 2 + Math.sin(t * 2 + i) * 4;
+    ctx.fillStyle = `rgba(255,${100 + i * 20},0,${0.4 - i * 0.05})`;
+    ctx.beginPath();
+    ctx.arc(fx, fy, 3 - i * 0.3, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
-// 凤凰翅膀（分层羽毛绘制）
+// 凤凰翅膀（分层翎羽，每根是独立的水滴形羽毛）
 function drawPhoenixWing(x, y, dir, flap) {
-  // 5 根分层羽毛（从短到长，颜色从亮到暗）
   for (let i = 0; i < 5; i++) {
     const angle = dir * (0.2 + i * 0.2 + flap);
     const len = 10 + i * 4;
     const ex = x + Math.cos(angle - Math.PI / 2) * len * dir;
     const ey = y + Math.sin(angle - Math.PI / 2) * len;
-    const g = ctx.createLinearGradient(x, y, ex, ey);
-    g.addColorStop(0, "rgba(255,210,80,0.7)");
-    g.addColorStop(0.6, "rgba(255,120,20,0.5)");
-    g.addColorStop(1, "rgba(255,60,0,0)");
-    ctx.strokeStyle = g;
-    ctx.lineWidth = 4 - i * 0.4;
-    ctx.lineCap = "round";
+    // 羽毛填充（水滴形）
+    ctx.fillStyle = `rgba(255,${160 + i * 15},${30 + i * 10},${0.5 - i * 0.05})`;
+    ctx.beginPath();
+    ctx.ellipse((x + ex) / 2, (y + ey) / 2, len / 2 + 2, 3, Math.atan2(ey - y, ex - x), 0, Math.PI * 2);
+    ctx.fill();
+    // 羽毛高光线
+    ctx.strokeStyle = `rgba(255,220,80,${0.4 - i * 0.04})`;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(ex, ey);
