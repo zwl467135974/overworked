@@ -513,33 +513,88 @@ function drawMountFromImage(img, mountId, t) {
   }
 }
 
-// 1. 飞剑：银白剑身横置脚下 + 灵光拖尾
+// 1. 飞剑：银白剑身横置脚下 + 剑光拖尾 + 灵气
+// 设定：修仙者御剑飞行，脚踏飞剑。剑身横置，剑尖朝前。
 function drawMountSword(t) {
   const y = 38;
-  // 灵光拖尾（左右渐隐光带）
-  const trail = ctx.createLinearGradient(-40, y, 40, y);
-  trail.addColorStop(0, "rgba(150,200,255,0)");
-  trail.addColorStop(0.5, "rgba(180,220,255,0.4)");
-  trail.addColorStop(1, "rgba(150,200,255,0)");
-  ctx.fillStyle = trail;
-  ctx.fillRect(-40, y - 2, 80, 4);
-  // 剑身（银白长条 + 微微浮动）
-  const float = Math.sin(t * 2) * 1;
-  ctx.fillStyle = "rgba(200,230,255,0.85)";
-  ctx.fillRect(-28, y - 3 + float, 56, 6);
-  // 剑柄
-  ctx.fillStyle = "rgba(255,220,150,0.7)";
-  ctx.fillRect(-32, y - 2 + float, 8, 4);
-  // 剑尖高光
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.fillRect(24, y - 2 + float, 6, 2);
-  // 脚下灵气粒子
+  const float = Math.sin(t * 2) * 1.5;
+  const yy = y + float;
+  // ===== 剑光拖尾（后方渐隐光带，越长越飘逸）=====
   for (let i = 0; i < 3; i++) {
-    const px = -20 + i * 20 + Math.sin(t * 3 + i) * 5;
-    const py = y + 4 + Math.sin(t * 4 + i) * 2;
-    ctx.fillStyle = "rgba(180,220,255,0.5)";
+    const trailY = yy + (i - 1) * 1.5;
+    const trail = ctx.createLinearGradient(-48, trailY, 20, trailY);
+    trail.addColorStop(0, "rgba(150,200,255,0)");
+    trail.addColorStop(0.7, `rgba(180,220,255,${0.15 + i * 0.08})`);
+    trail.addColorStop(1, "rgba(200,230,255,0.5)");
+    ctx.fillStyle = trail;
+    ctx.fillRect(-48, trailY - 1, 68, 2);
+  }
+  // ===== 剑身（银白渐变长条，带剑脊高光）=====
+  const bladeG = ctx.createLinearGradient(-30, yy, 30, yy);
+  bladeG.addColorStop(0, "rgba(150,180,210,0.6)"); // 剑根暗
+  bladeG.addColorStop(0.3, "rgba(220,235,255,0.9)"); // 剑身亮
+  bladeG.addColorStop(0.7, "rgba(240,248,255,1)"); // 剑刃白
+  bladeG.addColorStop(1, "rgba(255,255,255,1)"); // 剑尖纯白
+  ctx.fillStyle = bladeG;
+  // 剑身尖头形状（前窄后宽）
+  ctx.beginPath();
+  ctx.moveTo(-28, yy - 3);
+  ctx.lineTo(24, yy - 2);
+  ctx.lineTo(32, yy);
+  ctx.lineTo(24, yy + 2);
+  ctx.lineTo(-28, yy + 3);
+  ctx.closePath();
+  ctx.fill();
+  // 剑脊高光线（中央亮线）
+  ctx.strokeStyle = "rgba(255,255,255,0.9)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-26, yy);
+  ctx.lineTo(28, yy);
+  ctx.stroke();
+  // ===== 剑格（十字护手）=====
+  ctx.fillStyle = "rgba(200,160,50,0.8)";
+  ctx.fillRect(-30, yy - 4, 4, 8);
+  ctx.fillStyle = "rgba(255,220,100,0.6)";
+  ctx.fillRect(-30, yy - 4, 1, 8);
+  // ===== 剑柄 =====
+  ctx.fillStyle = "rgba(120,80,30,0.7)";
+  ctx.fillRect(-36, yy - 2, 6, 4);
+  // 剑柄缠绳纹理
+  ctx.strokeStyle = "rgba(180,140,60,0.5)";
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < 3; i++) {
     ctx.beginPath();
-    ctx.arc(px, py, 2, 0, Math.PI * 2);
+    ctx.moveTo(-35 + i * 2, yy - 2);
+    ctx.lineTo(-34 + i * 2, yy + 2);
+    ctx.stroke();
+  }
+  // ===== 剑首（柄端饰物：流苏/玉环）=====
+  ctx.fillStyle = "rgba(200,50,50,0.6)";
+  ctx.beginPath();
+  ctx.arc(-38, yy, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  // 红色剑穗飘动
+  ctx.strokeStyle = "rgba(220,60,40,0.5)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-38, yy + 2);
+  ctx.quadraticCurveTo(-40 + Math.sin(t * 3) * 2, yy + 6, -38 + Math.sin(t * 2.5) * 3, yy + 10);
+  ctx.stroke();
+  // ===== 剑尖星光（十字光芒）=====
+  ctx.strokeStyle = "rgba(255,255,255,0.7)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(28, yy - 4); ctx.lineTo(36, yy + 4);
+  ctx.moveTo(28, yy + 4); ctx.lineTo(36, yy - 4);
+  ctx.stroke();
+  // ===== 脚下灵气粒子（沿剑身飘）=====
+  for (let i = 0; i < 4; i++) {
+    const px = -24 + i * 16 + Math.sin(t * 3 + i) * 4;
+    const py = yy + 4 + Math.sin(t * 4 + i) * 2;
+    ctx.fillStyle = "rgba(180,220,255,0.4)";
+    ctx.beginPath();
+    ctx.arc(px, py, 1.5, 0, Math.PI * 2);
     ctx.fill();
   }
 }

@@ -128,6 +128,37 @@ function spawnSymbol(text, x, y, vx, vy, color) {
   if (symbols.length > 8) return;
   symbols.push({ text, x, y, vx, vy, color, life: 700, gravity: 0.08, born: performance.now() });
 }
+// 光剑粒子（程序绘制的剑形：剑身+剑脊高光+剑格+剑首+剑尖星光）
+// 有皮肤图标时用图标，否则程序绘制。
+// angle: 剑身朝向（弧度），length: 剑身长度
+function spawnFlyingSword(x, y, vx, vy, angle, length, color, life) {
+  const img = spellIcons["swords"];
+  if (img && img.complete && img.naturalWidth > 0) {
+    // 皮肤图标优先
+    if (particles.length > MAX_PARTICLES) return;
+    particles.push({ type: "icon", img, x, y, vx, vy, size: length * 0.7, life: life || 700, gravity: 0, rotation: angle, spin: 0, born: performance.now() });
+    return;
+  }
+  // 程序绘制光剑
+  if (particles.length > MAX_PARTICLES) return;
+  particles.push({ type: "sword", x, y, vx, vy, angle, length: length || 24, color: color || "#ffd700", life: life || 700, gravity: 0, born: performance.now() });
+}
+// 剑阵粒子（环形排列的悬浮剑，旋转收束）
+let swordArrayParticles = []; // 单独管理剑阵（不走普通粒子循环）
+function spawnSwordArray(cx, cy, count, radius, color) {
+  swordArrayParticles = [];
+  for (let i = 0; i < count; i++) {
+    const baseAngle = (Math.PI * 2 * i) / count;
+    swordArrayParticles.push({
+      cx, cy, baseAngle, radius,
+      color: color || "#ffd700",
+      length: 22 + Math.random() * 6,
+      born: performance.now(),
+      life: 1500, // 剑阵持续时间
+      phase: 0, // 0=展开旋转, 1=收束
+    });
+  }
+}
 
 const CODE_SYMBOLS = [";", "{", "}", "=>", "</>", "#", "()", "[]", "&&", "++", "fn", "let"];
 
@@ -460,62 +491,72 @@ function spellThunder(cx, cy) {
   }, 1600);
 }
 
-// 万剑诀：剑阵旋转 + 剑光拖尾 + 落地金光冲击
+// 万剑诀：聚剑→剑阵旋转→万剑齐发→归宗收束（经典四段式）
+// 设定参考：以意念驱剑，数十柄飞剑悬浮编队，旋转汇聚后锁定目标齐射，
+// 攻击完毕万剑归宗收回。出自风云/蜀山传经典武侠仙侠设定。
 function spellSwords(cx, cy) {
   const swordColor = "#ffd700";
-  // ===== 第一阶段：剑阵凝聚（0-400ms）——头顶旋转剑环 =====
-  for (let i = 0; i < 8; i++) {
-    const angle = (Math.PI * 2 * i) / 8;
-    const r = 50;
-    const sx = cx + Math.cos(angle) * r;
-    const sy = cy - 40 + Math.sin(angle) * r * 0.3;
-    spawnDot(sx, sy, 0, 0, swordColor, 4, 400, 0);
+  // ===== 第一阶段：聚剑（0-500ms）——四面八方飞剑汇聚到头顶 =====
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 120 + Math.random() * 80;
+    const sx = cx + Math.cos(angle) * dist;
+    const sy = cy - 50 + Math.sin(angle) * dist * 0.5;
+    // 飞剑朝中心飞行
+    const vx = (cx - sx) / 30;
+    const vy = (cy - 50 - sy) / 30;
+    spawnFlyingSword(sx, sy, vx, vy, Math.atan2(vy, vx) + Math.PI / 2, 20 + Math.random() * 8, swordColor, 500);
   }
-  // ===== 第二阶段：万剑天降（400ms-2s）——3波剑雨 =====
-  for (let wave = 0; wave < 3; wave++) {
-    setTimeout(() => {
-      for (let i = 0; i < 10; i++) {
-        const sx = cx + (Math.random() - 0.5) * 250;
-        const sy = -20 - Math.random() * 80;
-        const tx = cx + (Math.random() - 0.5) * 100;
-        const ty = cy + (Math.random() - 0.5) * 50;
-        const dx = tx - sx, dy = ty - sy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const vx = dx / dist * 10, vy = dy / dist * 10;
-        const angle = Math.atan2(vy, vx) + Math.PI / 2;
-        // 剑光拖尾（发光线）
-        spawnBeam(sx, sy, Math.atan2(vy, vx), 30, 3, swordColor, 200);
-        // 剑图标/符号下落
-        const swordImg = spellIcons["swords"];
-        if (swordImg && swordImg.complete) {
-          spawnSpellParticle("swords", sx, sy, vx, vy, 22, 700, 0, angle);
-        } else if (symbols.length < 40) {
-          symbols.push({ text: "╫", x: sx, y: sy, vx, vy, color: swordColor, life: 700, gravity: 0, born: performance.now() });
-        }
-      }
-      // 每波落地金光
-      spawnShockwave(cx, cy, swordColor, 80, 500);
-      shakeAmp = 8;
-    }, 400 + wave * 500);
-  }
-  // ===== 第三阶段：剑阵爆发（2s）——中心金光绽放 =====
+  // ===== 第二阶段：剑阵旋转（500ms）——12柄剑环形悬浮，旋转加速 =====
   setTimeout(() => {
-    spawnShockwave(cx, cy, "#ffffff", 150, 1000);
-    spawnShockwave(cx, cy, swordColor, 120, 800);
-    // 金光辐射
-    for (let i = 0; i < 12; i++) {
-      const angle = (Math.PI * 2 * i) / 12;
-      spawnBeam(cx, cy, angle, 70, 5, swordColor, 600);
-    }
-    // 金色粒子四散
+    spawnSwordArray(cx, cy, 12, 60, swordColor);
+    // 剑阵下方金光法阵
+    spawnShockwave(cx, cy - 20, swordColor, 70, 1200);
+    flashAlpha = 0.1;
+  }, 500);
+  // ===== 第三阶段：万剑齐发（1.5s）——剑阵炸开，万剑向四周齐射 =====
+  setTimeout(() => {
+    // 剑阵收束后炸开——清空剑阵
+    swordArrayParticles = [];
+    // 万剑齐发：24柄光剑从中心向外辐射（如星河瀑布）
     for (let i = 0; i < 24; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 3 + Math.random() * 5;
-      spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, swordColor, 4, 1000, 0.03);
+      const angle = (Math.PI * 2 * i) / 24 + Math.random() * 0.15;
+      const speed = 8 + Math.random() * 4;
+      spawnFlyingSword(cx, cy - 20, Math.cos(angle) * speed, Math.sin(angle) * speed, angle + Math.PI / 2, 28 + Math.random() * 8, swordColor, 800);
+      // 剑光拖尾
+      spawnBeam(cx, cy - 20, angle, 40, 3, swordColor, 300);
     }
-    flashAlpha = 0.2;
+    // 中心爆发
+    spawnShockwave(cx, cy - 20, "#ffffff", 100, 600);
+    spawnShockwave(cx, cy - 20, swordColor, 130, 800);
+    // 金色粒子填充
+    for (let i = 0; i < 20; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      spawnDot(cx, cy - 20, Math.cos(angle) * 5, Math.sin(angle) * 5, swordColor, 3, 700, 0.02);
+    }
     shakeAmp = 12;
-  }, 2000);
+    flashAlpha = 0.2;
+  }, 1500);
+  // ===== 第四阶段：归宗收束（2.5s）——所有剑回收汇聚成一束光 =====
+  setTimeout(() => {
+    // 万剑归宗：从四周飞回中心
+    for (let i = 0; i < 16; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 100 + Math.random() * 60;
+      const sx = cx + Math.cos(angle) * dist;
+      const sy = cy - 20 + Math.sin(angle) * dist * 0.5;
+      const vx = (cx - sx) / 20;
+      const vy = (cy - 20 - sy) / 20;
+      spawnFlyingSword(sx, sy, vx, vy, Math.atan2(vy, vx) + Math.PI / 2, 18, swordColor, 400);
+    }
+    // 汇聚光柱（向上冲天）
+    setTimeout(() => {
+      spawnBeam(cx, cy - 20, -Math.PI / 2, 120, 10, "#ffffff", 500);
+      spawnBeam(cx, cy - 20, -Math.PI / 2, 100, 6, swordColor, 600);
+      spawnShockwave(cx, cy - 20, swordColor, 80, 500);
+      flashAlpha = 0.15;
+    }, 350);
+  }, 2500);
 }
 
 // 天地同寿：五色法阵 + 旋转光柱 + 全屏冲击波（4s，终极）
@@ -607,7 +648,7 @@ function render(now) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // 粒子空时跳过（降耗）
-  if (particles.length === 0 && symbols.length === 0 && shakeAmp < 0.1 && flashAlpha < 0.01) {
+  if (particles.length === 0 && symbols.length === 0 && swordArrayParticles.length === 0 && shakeAmp < 0.1 && flashAlpha < 0.01) {
     requestAnimationFrame(render);
     return;
   }
@@ -722,10 +763,101 @@ function render(now) {
       }
       ctx.stroke();
       ctx.shadowBlur = 0;
+    } else if (p.type === "sword") {
+      // 程序绘制光剑：剑身渐变 + 剑脊高光 + 剑格 + 剑尖星芒
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      const L = p.length * scale;
+      // 剑身（渐变长条：柄→刃→尖）
+      const g = ctx.createLinearGradient(0, 0, L, 0);
+      g.addColorStop(0, "rgba(180,140,40,0.6)"); // 剑柄
+      g.addColorStop(0.2, p.color); // 剑格处
+      g.addColorStop(0.4, p.color);
+      g.addColorStop(0.8, "rgba(255,250,200,0.9)"); // 剑刃亮
+      g.addColorStop(1, "rgba(255,255,255,1)"); // 剑尖白
+      ctx.fillStyle = g;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 8 * (1 - t * 0.5);
+      // 剑身（尖头三角形）
+      ctx.beginPath();
+      ctx.moveTo(0, -1.5);
+      ctx.lineTo(L * 0.8, -1.5);
+      ctx.lineTo(L, 0);
+      ctx.lineTo(L * 0.8, 1.5);
+      ctx.lineTo(0, 1.5);
+      ctx.closePath();
+      ctx.fill();
+      // 剑脊高光线
+      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.lineWidth = 0.8;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(L * 0.2, 0);
+      ctx.lineTo(L * 0.9, 0);
+      ctx.stroke();
+      // 剑格（十字横档）
+      ctx.fillStyle = p.color;
+      ctx.fillRect(L * 0.15, -3, 2, 6);
+      // 剑尖星芒（十字光）
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 1;
+      const tipX = L;
+      ctx.beginPath();
+      ctx.moveTo(tipX - 4, 0); ctx.lineTo(tipX + 4, 0);
+      ctx.moveTo(tipX, -3); ctx.lineTo(tipX, 3);
+      ctx.stroke();
+      ctx.restore();
     }
     aliveP.push(p);
   }
   particles = aliveP;
+
+  // ===== 剑阵渲染（万剑诀专属：环形悬浮剑旋转收束）=====
+  if (swordArrayParticles.length > 0) {
+    ctx.globalCompositeOperation = "lighter";
+    const aliveArr = [];
+    for (const sa of swordArrayParticles) {
+      const age = now - sa.born;
+      if (age >= sa.life) continue;
+      const t = age / sa.life;
+      // 旋转角度（随时间加快）
+      const rotSpeed = t < 0.6 ? 2 + t * 3 : 5; // 展开时加速
+      const rotAngle = sa.baseAngle + age / 1000 * rotSpeed * Math.PI;
+      // 半径：先展开(0→radius)，后收束(radius→0)
+      let r;
+      if (t < 0.3) { r = sa.radius * (t / 0.3); } // 展开
+      else if (t < 0.7) { r = sa.radius; } // 保持
+      else { r = sa.radius * (1 - (t - 0.7) / 0.3); } // 收束
+      const px = sa.cx + Math.cos(rotAngle) * r;
+      const py = sa.cy + Math.sin(rotAngle) * r * 0.4 - 30; // 椭圆轨道，略偏上
+      // 剑身朝向：沿切线方向（旋转方向）
+      const swordAngle = rotAngle + Math.PI / 2;
+      const alpha = t < 0.8 ? 1 : (1 - t) / 0.2;
+      ctx.globalAlpha = alpha;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(swordAngle);
+      const L = sa.length;
+      // 简化剑身
+      const g = ctx.createLinearGradient(0, 0, L, 0);
+      g.addColorStop(0, "rgba(180,140,40,0.5)");
+      g.addColorStop(0.3, sa.color);
+      g.addColorStop(1, "rgba(255,255,255,1)");
+      ctx.fillStyle = g;
+      ctx.shadowColor = sa.color;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.moveTo(0, -1.2); ctx.lineTo(L * 0.8, -1.2); ctx.lineTo(L, 0);
+      ctx.lineTo(L * 0.8, 1.2); ctx.lineTo(0, 1.2); ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      aliveArr.push(sa);
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    swordArrayParticles = aliveArr;
+  }
 
   // ===== 法术图标粒子（source-over，保留原图色彩）=====
   ctx.globalCompositeOperation = "source-over";
