@@ -237,7 +237,7 @@ function stopWalking() {
 // 简单物理：拖到空中松开 → 掉到底边 + 弹跳 + 走边
 // 拖动结束由 Rust 侧 WindowEvent::Moved debounce 检测，emit "drag-ended"
 const WIN_W = 160;
-const WIN_H = 200;
+const WIN_H = 260;
 
 let physicsTimer = null;
 

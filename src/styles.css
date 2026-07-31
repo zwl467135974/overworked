@@ -1,9 +1,8 @@
 /* Overworked 前端样式 —— 透明桌宠窗口
  *
- * 窗口尺寸 160×200，但视觉上只占底部 96×96（角色区域）。
- * 上方 104px 是透明留白，专给冒泡用——这样冒泡有空间不被窗口边界裁掉，
- * 而透明窗口下用户只感知到角色本身，留白区看不见。
- * （Windows 透明窗口会裁掉超出窗口的内容，所以必须把冒泡装进窗口里。）
+ * 窗口尺寸 160×260。
+ * 底部 140px 是 Canvas（角色+坐骑），上方留给数值条(~44px)和冒泡(~76px)。
+ * 透明窗口下用户只感知到角色本身，留白区看不见。
  */
 
 * {
@@ -15,9 +14,9 @@
 html,
 body {
   width: 160px;
-  height: 200px;
+  height: 260px;
   background: transparent;
-  overflow: hidden; /* 内容都在窗口内，可以 hidden */
+  overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
   font-family: monospace;
@@ -44,11 +43,11 @@ body {
 }
 
 /* ===== 数值细条（红线2 调整后：常驻四属性） ===== */
-/* 克制的小尺寸，不喧宾夺主。放在角色上方、冒泡下方 */
+/* 克制的小尺寸，不喧宾夺主。放在 canvas(140高) 上方 */
 #stats-panel {
   position: absolute;
   left: 16px;
-  bottom: 100px; /* 角色顶部上方 */
+  bottom: 144px; /* canvas 高 140 + 4px 间距 */
   width: 128px;
   display: flex;
   flex-direction: column;
@@ -120,8 +119,8 @@ body {
 /* ===== 存款增加飘字特效 ===== */
 #float-gain {
   position: absolute;
-  /* 跟存款行对齐（第3行，约 bottom: 124px） */
-  bottom: 124px;
+  /* 跟存款行对齐（stats-panel 第3行） */
+  bottom: 168px;
   right: 14px;
   color: #ca8a04;
   font-size: 11px;
@@ -153,7 +152,7 @@ body {
 #cult-panel {
   position: absolute;
   left: 16px;
-  bottom: 100px;
+  bottom: 144px; /* 与 stats-panel 同位 */
   width: 128px;
   display: flex;
   flex-direction: column;
@@ -249,11 +248,11 @@ body {
 }
 
 /* ===== 冒泡（红线 1：只反应不教育；红线 3：3 秒消失不打断） ===== */
-/* 冒泡定位在角色正上方（窗口的上半透明区） */
+/* 冒泡定位在数值条上方（窗口上半透明区） */
 #bubble {
   position: absolute;
-  /* 紧贴角色头顶上方（数值面板下方），留足向上展开空间 */
-  bottom: 102px;
+  /* 数值面板(stats-panel ~40px高)上方 */
+  bottom: 190px;
   left: 50%;
   transform: translateX(-50%) translateY(8px);
   width: 148px;

@@ -96,7 +96,7 @@ fn reset_position(window: tauri::WebviewWindow) -> Result<(), String> {
         let sw = monitor.size().width as i32;
         let sh = monitor.size().height as i32;
         let x = sw - 180;
-        let y = sh - 240;
+        let y = sh - 300;
         window.set_position(PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -643,7 +643,7 @@ pub fn run() {
                 // 默认右下角
                 let mut default_pos = || -> (i32, i32) {
                     if let Ok(Some(monitor)) = win.primary_monitor() {
-                        (monitor.size().width as i32 - 180, monitor.size().height as i32 - 240)
+                        (monitor.size().width as i32 - 180, monitor.size().height as i32 - 300)
                     } else {
                         (1740, 840)
                     }
@@ -818,13 +818,13 @@ pub fn run() {
                         let _ = app_handle.emit("cultivation-update", cult);
                     }
                     // 周期 emit 桌宠位置给 fx-overlay（逻辑坐标，fx-overlay 自己转物理坐标）
-                    // canvas 120×140 在 left:20 bottom:0，中心 = (20+60, 200-140+56) = (80, 116)
+                    // canvas 120×140 在 left:20 bottom:0，中心 = (20+60, 260-140+56) = (80, 176)
                     if let Some(main_win) = app_handle.get_webview_window("main") {
                         if let Ok(pos) = main_win.outer_position() {
                             if let Ok(scale) = main_win.scale_factor() {
                                 let _ = app_handle.emit(
                                     "pet-position",
-                                    (pos.x as f64 / scale + 80.0, pos.y as f64 / scale + 116.0),
+                                    (pos.x as f64 / scale + 80.0, pos.y as f64 / scale + 176.0),
                                 );
                             }
                         }
@@ -1010,7 +1010,7 @@ pub fn run() {
                             if let Ok(Some(monitor)) = win.current_monitor() {
                                 let sw = monitor.size().width as i32;
                                 let sh = monitor.size().height as i32;
-                                let _ = win.set_position(PhysicalPosition::new(sw - 180, sh - 240));
+                                let _ = win.set_position(PhysicalPosition::new(sw - 180, sh - 300));
                             }
                         }
                         let _ = app_handle.emit("bubble-show", "我回来了！");
