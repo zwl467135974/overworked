@@ -395,57 +395,100 @@ function spellFireball(cx, cy) {
   }, 800);
 }
 
-// 冰封术：冰晶六角绽放 + 冰锥上刺 + 霜冻裂纹 + 寒气扩散
+// 冰封术：绝对零度——蓄力寒冰→冰晶核爆→冰刺丛林→持续冰封风暴（2.5s）
+// 比 fireball(300) 贵一倍(600)，必须更震撼：大范围冻结、冰刺丛林、冰封法阵。
 function spellIce(cx, cy) {
-  // ===== 第一阶段：凝聚（0-200ms）——蓝色能量收束 =====
-  for (let i = 0; i < 6; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    spawnDot(cx + Math.cos(angle) * 25, cy + Math.sin(angle) * 25, -Math.cos(angle) * 2, -Math.sin(angle) * 2, "#80c0ff", 5, 200, 0);
+  const iceBlue = "#80c0ff";
+  const iceWhite = "#e0f0ff";
+  // ===== 第一阶段：蓄力（0-300ms）——寒气凝聚，温度骤降 =====
+  // 蓝色寒气向中心收束（比 fireball 更多粒子）
+  for (let i = 0; i < 16; i++) {
+    const angle = (Math.PI * 2 * i) / 16 + Math.random() * 0.2;
+    const dist = 30 + Math.random() * 20;
+    spawnDot(cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist,
+      -Math.cos(angle) * 2.5, -Math.sin(angle) * 2.5, iceBlue, 4, 300, 0);
   }
-  // ===== 第二阶段：绽放（200ms）——六角冰晶 + 多层霜冻 =====
+  // 寒气光环（呼吸式收缩）
+  spawnShockwave(cx, cy, "rgba(120,180,255,0.3)", 50, 300);
+
+  // ===== 第二阶段：冰晶核爆（300ms）——大范围冰晶绽放 =====
   setTimeout(() => {
-    // 六角冰晶图案（6条光芒线 + 中心爆裂）
-    for (let i = 0; i < 6; i++) {
-      const angle = (Math.PI * 2 * i) / 6;
-      // 光芒线
-      spawnBeam(cx, cy, angle, 50, 4, "#a0e0ff", 500);
-      // 冰晶图标沿光芒散射
-      spawnSpellParticle("ice", cx, cy, Math.cos(angle) * 3, Math.sin(angle) * 3, 16, 1200, -0.01, angle);
-    }
-    // 多层霜冻冲击波（蓝白交替，慢扩散）
-    spawnShockwave(cx, cy, "#a0e0ff", 120, 1000);
-    setTimeout(() => spawnShockwave(cx, cy, "#ffffff", 100, 800), 150);
-    setTimeout(() => spawnShockwave(cx, cy, "#c0eaff", 80, 600), 300);
-    // 冰锥从地面向上刺出（6根）
-    for (let i = 0; i < 6; i++) {
-      const angle = Math.PI + (Math.random() - 0.5) * Math.PI; // 偏下方
-      const dist = 30 + Math.random() * 30;
-      const ix = cx + Math.cos(angle) * dist;
-      const iy = cy + Math.abs(Math.sin(angle)) * dist;
-      // 冰锥向上喷射
-      spawnBeam(ix, iy, -Math.PI / 2 + (Math.random() - 0.5) * 0.3, 25, 5, "#b0d0ff", 600);
-      spawnDot(ix, iy, 0, -2, "#e0f0ff", 4, 800, 0.05);
-    }
-    // 冰雾（白雾下沉扩散）
-    for (let i = 0; i < 16; i++) {
-      const ox = (Math.random() - 0.5) * 80;
-      spawnDot(cx + ox, cy, (Math.random() - 0.5) * 1, 1 + Math.random() * 0.5, "rgba(200,230,255,0.5)", 6, 1800, 0.005);
-    }
-    // 冰晶碎片飘散
-    for (let i = 0; i < 10; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      spawnDot(cx, cy, Math.cos(angle) * 2, Math.sin(angle) * 2 - 1, "#e0f0ff", 2, 1500, -0.01);
-    }
-    flashAlpha = 0.2;
-  }, 200);
-  // ===== 第三阶段：余寒（1000ms）——持续飘雪 =====
-  setTimeout(() => {
+    // 中心冰晶核爆（双层冲击波，范围比 fireball 更大）
+    spawnShockwave(cx, cy, iceBlue, 160, 1200);
+    setTimeout(() => spawnShockwave(cx, cy, iceWhite, 130, 1000), 100);
+    setTimeout(() => spawnShockwave(cx, cy, "#ffffff", 100, 800), 200);
+    // 六角冰晶法阵（12条光芒线，比之前6条多一倍）
     for (let i = 0; i < 12; i++) {
-      const ox = (Math.random() - 0.5) * 100;
-      const oy = -Math.random() * 40;
-      spawnDot(cx + ox, cy + oy, (Math.random() - 0.5) * 0.5, 0.5 + Math.random(), "#ffffff", 1.5, 2000, 0);
+      const angle = (Math.PI * 2 * i) / 12;
+      spawnBeam(cx, cy, angle, 70, 4, iceBlue, 600);
     }
-  }, 1000);
+    // 冰晶图标向外辐射（16颗，比之前12多）
+    for (let i = 0; i < 16; i++) {
+      const angle = (Math.PI * 2 * i) / 16 + Math.random() * 0.1;
+      const speed = 3 + Math.random() * 3;
+      spawnSpellParticle("ice", cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed, 16, 1400, -0.01, angle);
+    }
+    // 冰晶碎片爆裂（24颗，随机散射）
+    for (let i = 0; i < 24; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 3 + Math.random() * 5;
+      const colors = ["#a0d0ff", "#c0e0ff", "#ffffff", "#80a0e0"];
+      spawnDot(cx, cy, Math.cos(angle) * speed, Math.sin(angle) * speed - 2, colors[Math.floor(Math.random() * 4)], 2.5, 1200, 0.06);
+    }
+    shakeAmp = 12;
+    flashAlpha = 0.25;
+  }, 300);
+
+  // ===== 第三阶段：冰刺丛林（500ms-1.2s）——地面冰刺大面积生长 =====
+  // 分3波刺出，每波8根，覆盖大范围
+  for (let wave = 0; wave < 3; wave++) {
+    setTimeout(() => {
+      for (let i = 0; i < 8; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 20 + wave * 25 + Math.random() * 20;
+        const ix = cx + Math.cos(angle) * dist;
+        const iy = cy + Math.abs(Math.sin(angle)) * dist;
+        // 冰刺向上生长（光柱+碎片）
+        const spikeAngle = -Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+        spawnBeam(ix, iy, spikeAngle, 35 + Math.random() * 15, 6, iceBlue, 700);
+        spawnBeam(ix, iy, spikeAngle, 25, 3, iceWhite, 600);
+        // 冰刺顶端碎片飞溅
+        for (let j = 0; j < 3; j++) {
+          spawnDot(ix, iy, (Math.random() - 0.5) * 2, -3 - Math.random() * 2, iceWhite, 2, 600, 0.1);
+        }
+      }
+      // 每波小冲击波
+      spawnShockwave(cx, cy, "rgba(150,200,255,0.2)", 60 + wave * 20, 500);
+      shakeAmp = 6;
+    }, 500 + wave * 250);
+  }
+
+  // ===== 第四阶段：冰封风暴（1.2s-2.5s）——持续寒冰粒子+飘雪+冰雾 =====
+  setTimeout(() => {
+    // 大范围冰雾弥漫
+    for (let i = 0; i < 24; i++) {
+      const ox = (Math.random() - 0.5) * 140;
+      const oy = (Math.random() - 0.5) * 60;
+      spawnDot(cx + ox, cy + oy, (Math.random() - 0.5) * 1.5, 0.5 + Math.random(), "rgba(200,230,255,0.4)", 7, 2000, 0.003);
+    }
+    // 冰晶持续飘散
+    for (let i = 0; i < 16; i++) {
+      const ox = (Math.random() - 0.5) * 120;
+      const oy = -Math.random() * 50;
+      spawnDot(cx + ox, cy + oy, (Math.random() - 0.5) * 0.8, 0.8 + Math.random() * 0.5, "#ffffff", 2, 2500, 0);
+    }
+    // 中心余寒光环
+    spawnShockwave(cx, cy, "rgba(180,220,255,0.15)", 80, 1500);
+    flashAlpha = 0.1;
+  }, 1200);
+  // 最后的飘雪（2s）
+  setTimeout(() => {
+    for (let i = 0; i < 20; i++) {
+      const ox = (Math.random() - 0.5) * 160;
+      const oy = -Math.random() * 80;
+      spawnDot(cx + ox, cy + oy, (Math.random() - 0.5) * 0.5, 0.5 + Math.random() * 0.5, "#ffffff", 1.5, 2500, 0);
+    }
+  }, 2000);
 }
 
 // 雷劫术：分叉闪电树 + 落雷光柱 + 电弧残留 + 强震
