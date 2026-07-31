@@ -1887,14 +1887,25 @@ function updateSmoothBars() {
     barMood.style.width = `${displayMood}%`;
     barMood.classList.toggle("low", displayMood < 30);
   }
+  // 修仙面板的体力/心情条（同步更新）
+  if (barCultStamina) {
+    barCultStamina.style.width = `${displayStamina}%`;
+    barCultStamina.classList.toggle("low", displayStamina < 30);
+  }
+  if (barCultMood) {
+    barCultMood.style.width = `${displayMood}%`;
+    barCultMood.classList.toggle("low", displayMood < 30);
+  }
   requestAnimationFrame(updateSmoothBars);
 }
 requestAnimationFrame(updateSmoothBars);
 
-// ===== 修仙模式（红线放开：境界/修为可见） =====
+// ===== 修仙模式（红线放开：境界/修为/体力/心情可见） =====
 const cultPanel = document.getElementById("cult-panel");
 const cultRealmEl = document.getElementById("cult-realm");
 const barExp = document.getElementById("bar-exp");
+const barCultStamina = document.getElementById("bar-cult-stamina");
+const barCultMood = document.getElementById("bar-cult-mood");
 const statsPanel = document.getElementById("stats-panel");
 let cultMode = false;
 let cultRealm = 0; // 当前境界 0-6（render 循环读取，画光环/金丹等）

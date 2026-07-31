@@ -183,6 +183,11 @@ body {
   box-shadow: 0 0 3px rgba(52, 211, 153, 0.6);
 }
 
+/* 修仙面板体力/心情条（复用颜色，区别于普通面板） */
+.cult-stamina { background: #16a34a; width: 0%; }
+.cult-mood { background: #9333ea; width: 0%; }
+.cult-stamina.low, .cult-mood.low { background: #ef4444; }
+
 /* 突破成功金光闪烁 */
 @keyframes realmFlash {
   0%, 100% { filter: brightness(1); }

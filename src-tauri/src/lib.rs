@@ -900,6 +900,14 @@ pub fn run() {
                                     }
                                 }
                             }
+                            TickEvent::CultDeviation => {
+                                // 修仙过劳走火入魔：红光特效 + 冒泡
+                                if let Some(fx_win) = app_handle.get_webview_window("fx-overlay") {
+                                    let _ = fx_win.show();
+                                }
+                                let _ = app_handle.emit("cult-deviation", ());
+                                let _ = app_handle.emit("bubble-show", "走火入魔！气血逆流…");
+                            }
                         }
                     }
 

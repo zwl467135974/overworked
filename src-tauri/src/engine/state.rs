@@ -201,6 +201,8 @@ pub enum TickEvent {
     LifeSaved,
     // 彩蛋：存款首达500（修仙之路开启的神秘提示）
     SavingsMilestone,
+    // 修仙：过劳走火入魔（体力归零时，修仙模式不走医院走这个）
+    CultDeviation,
 }
 
 impl PetState {
@@ -405,15 +407,23 @@ impl PetState {
             events.push(TickEvent::SavingsMilestone);
         }
 
-        // ===== 过劳送医检查（修仙：续命丹可救命）=====
+        // ===== 过劳检查（修仙模式：走火入魔 / 普通模式：进医院）=====
         if self.stamina <= 0.0 {
             if ev.cultivation_mode && ev.item_life_pill > 0 {
-                // 续命丹救命：消耗一颗，体力回 50，不进医院
+                // 续命丹救命：消耗一颗，体力回 50
                 ev.item_life_pill -= 1;
                 self.stamina = 50.0;
                 self.mood = (self.mood + 10.0).min(100.0);
                 events.push(TickEvent::LifeSaved);
+            } else if ev.cultivation_mode {
+                // 修仙模式过劳 → 走火入魔（不进医院，不打断修炼）
+                // 气血逆流：体力恢复到30，心情-20，修为-30
+                self.stamina = 30.0;
+                self.mood = (self.mood - 20.0).max(0.0);
+                ev.cultivation_exp = (ev.cultivation_exp - 30.0).max(0.0);
+                events.push(TickEvent::CultDeviation);
             } else {
+                // 普通模式 → 进医院
                 self.hospital_until = Some(now + Duration::from_secs(300));
                 events.push(TickEvent::HospitalAdmit);
             }
@@ -731,9 +741,33 @@ impl PetState {
                 events.push(CultEvent::RealmUp(ev.cultivation_realm));
             }
         } else {
-            // 走火入魔：修为清零 + 体力降到 20
-            ev.cultivation_exp = 0.0;
-            self.stamina = 20.0;
+            // 走火入魔：按境界分级惩罚（低境界容错高，高境界惩罚重）
+            match ev.cultivation_realm {
+                1 => {
+                    // 练气：修为降到50，体力不变（新手友好）
+                    ev.cultivation_exp = 50.0;
+                }
+                2 => {
+                    // 筑基：修为降到30，体力-20
+                    ev.cultivation_exp = 30.0;
+                    self.stamina = (self.stamina - 20.0).max(0.0);
+                }
+                3 => {
+                    // 金丹：修为清零，体力降到30
+                    ev.cultivation_exp = 0.0;
+                    self.stamina = 30.0;
+                }
+                4 => {
+                    // 元婴：修为清零，体力降到20
+                    ev.cultivation_exp = 0.0;
+                    self.stamina = 20.0;
+                }
+                _ => {
+                    // 化神：修为清零，体力降到10
+                    ev.cultivation_exp = 0.0;
+                    self.stamina = 10.0;
+                }
+            }
             events.push(CultEvent::Deviation);
         }
         Ok(events)
