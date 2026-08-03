@@ -209,6 +209,7 @@ body {
 /* 修仙面板体力/心情条（复用颜色，区别于普通面板） */
 .cult-stamina { background: #16a34a; width: 0%; }
 .cult-mood { background: #9333ea; width: 0%; }
+.cult-demon { background: #8b3a9e; width: 0%; }
 .cult-stamina.low, .cult-mood.low { background: #ef4444; }
 
 /* 突破成功金光闪烁 */

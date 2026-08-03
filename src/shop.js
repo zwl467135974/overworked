@@ -17,7 +17,7 @@ const MOUNTS = [
 ];
 const SPELLS = [
   { key: "fireball",  name: "火球术",   icon: "火", price: 300,  staminaCost: 10, gainExp: 5,  gainWage: 3,  desc: "红橙火球爆裂" },
-  { key: "ice",       name: "冰封术",   icon: "冰", price: 600,  staminaCost: 15, gainExp: 8,  gainWage: 5,  desc: "蓝白冰晶绽放" },
+  { key: "ice",       name: "冰封术",   icon: "冰", price: 600,  staminaCost: 15, gainExp: 8,  gainWage: 5,  desc: "蓝白冰晶绽放 · 净心-15" },
   { key: "thunder",   name: "雷劫术",   icon: "雷", price: 1200, staminaCost: 20, gainExp: 12, gainWage: 8,  desc: "紫白闪电劈下" },
   { key: "swords",    name: "万剑诀",   icon: "剑", price: 3000, staminaCost: 30, gainExp: 18, gainWage: 12, desc: "数十光剑天降" },
   { key: "armageddon", name: "天地同寿", icon: "灭", price: 8000, staminaCost: 45, gainExp: 25, gainWage: 18, desc: "五色光柱冲天" },
@@ -119,6 +119,25 @@ function render(data) {
   // 突破成功率标签
   const rateTag = document.getElementById("breakthrough-rate-tag");
   if (rateTag) rateTag.textContent = `成功率 ${data.breakthrough_rate}%`;
+  // 心魔值显示
+  const demonDisplay = document.getElementById("demon-display");
+  const demonValue = document.getElementById("demon-value");
+  const demonEffect = document.getElementById("demon-effect");
+  if (demonDisplay && demonValue) {
+    const d = Math.floor(data.inner_demon || 0);
+    if (d > 0) {
+      demonDisplay.hidden = false;
+      demonValue.textContent = d;
+      if (demonEffect) {
+        if (d < 30) demonEffect.textContent = "· 清心";
+        else if (d < 60) demonEffect.textContent = "· 侵扰(修为-20% 突破-10%)";
+        else if (d < 80) demonEffect.textContent = "· 缠绕(修为-40% 突破-20%)";
+        else demonEffect.textContent = "· 走火边缘(修为-60% 突破-30%)";
+      }
+    } else {
+      demonDisplay.hidden = true;
+    }
+  }
   // 心魔丹计数
   const hdCount = document.getElementById("heart-devil-count");
   if (hdCount) hdCount.textContent = `${data.heart_devil_pills_used}/3`;

@@ -158,6 +158,7 @@ struct ShopData {
     exp: f32,
     savings: f32,
     stamina: f32,
+    inner_demon: f32,
     qi_pill: i64,
     life_pill: i64,
     spirit_talisman: i64,
@@ -179,11 +180,11 @@ struct ShopData {
 /// 获取商店数据（商店窗口启动时拉取）。
 #[tauri::command]
 fn get_shop_data(state: tauri::State<'_, AppState>) -> ShopData {
-    let (savings, stamina, ev) = {
+    let (savings, stamina, inner_demon, ev) = {
         let pet = state.state.lock().unwrap();
         let ev = state.save.lock().map(|s| s.load_events()).unwrap_or_default();
         let payload = pet.to_cultivation_payload(&ev);
-        (payload.savings, payload.stamina, ev)
+        (payload.savings, payload.stamina, payload.inner_demon, ev)
     };
     ShopData {
         cultivation_mode: ev.cultivation_mode,
@@ -193,6 +194,7 @@ fn get_shop_data(state: tauri::State<'_, AppState>) -> ShopData {
         exp: ev.cultivation_exp,
         savings,
         stamina,
+        inner_demon,
         qi_pill: ev.item_qi_pill,
         life_pill: ev.item_life_pill,
         spirit_talisman: ev.item_spirit_talisman,

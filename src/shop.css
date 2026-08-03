@@ -461,6 +461,14 @@ body {
   border-radius: 2px;
   margin-left: 4px;
 }
+.demon-display {
+  font-size: 10px;
+  margin-top: 2px;
+  color: #c08adf;
+}
+.demon-label { font-weight: bold; }
+.demon-effect { color: #a070c0; font-size: 9px; }
+.demon-display[hidden] { display: none; }
 
 .btn-quest {
   padding: 4px 14px;

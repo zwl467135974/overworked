@@ -44,6 +44,7 @@ pub struct CultivationPayload {
     pub exp: f32,               // 0-100
     pub savings: f32,           // 灵石=存款（共用）
     pub stamina: f32,           // 体力 0-100
+    pub inner_demon: f32,       // 心魔 0-100
     pub qi_pill: i64,
     pub life_pill: i64,
     pub spirit_talisman: i64,
@@ -121,12 +122,33 @@ pub fn heart_devil_pill_price(realm: i64) -> i64 {
     HEART_DEVIL_PILL_PRICE.get(realm as usize).copied().unwrap_or(99999)
 }
 
-/// 最终突破成功率 = 基础率 + 任务奖励 + 心魔丹×5%（上限100%）
+/// 最终突破成功率 = 基础率 + 任务奖励 - 心魔惩罚（上限100%）
 pub fn breakthrough_success_rate(ev: &save::EventState) -> f32 {
     let base = breakthrough_rate(ev.cultivation_realm);
     let bonus = ev.task_bonus as f32 / 100.0;
-    let pills = ev.heart_devil_pills_used as f32 * 0.05;
-    (base + bonus + pills).min(1.0)
+    let demon_penalty = inner_demon_breakthrough_penalty(ev.inner_demon);
+    (base + bonus - demon_penalty).max(0.05).min(1.0)
+}
+
+/// 心魔对修为获取的倍率（0.4~1.0，心魔越高修为越少）
+pub fn inner_demon_mult(demon: f32) -> f32 {
+    if demon < 30.0 { 1.0 }
+    else if demon < 60.0 { 0.8 }
+    else if demon < 80.0 { 0.6 }
+    else { 0.4 }
+}
+
+/// 心魔对突破成功率的惩罚（0~0.30，心魔越高越难突破）
+pub fn inner_demon_breakthrough_penalty(demon: f32) -> f32 {
+    if demon < 30.0 { 0.0 }
+    else if demon < 60.0 { 0.10 }
+    else if demon < 80.0 { 0.20 }
+    else { 0.30 }
+}
+
+/// 心魔是否高到跳过续命丹直接走火入魔（≥60）
+pub fn inner_demon_critical(demon: f32) -> bool {
+    demon >= 60.0
 }
 
 /// 坐骑名称
@@ -424,6 +446,10 @@ impl PetState {
             // 摸鱼→时薪回落（朝基线 35 趋近）
             self.hourly_wage += (35.0 - self.hourly_wage) * 0.05 * dt;
             self.idle_seconds_accum += dt; // 累计挂机时长
+            // 修仙模式：打坐化解心魔（挂机每 tick -0.5，约100秒散10点）
+            if ev.cultivation_mode {
+                ev.inner_demon = (ev.inner_demon - 0.5 * dt).max(0.0);
+            }
         } else {
             self.stamina += 0.5 * dt;
             self.mood += 0.4 * dt;
@@ -444,7 +470,7 @@ impl PetState {
         // 聚灵符期间 ×2。
         if ev.cultivation_mode && ev.cultivation_realm < 6 {
             let boost = now_secs as i64 <= ev.spirit_boost_until;
-            let mult = if boost { 2.0 } else { 1.0 };
+            let mult = if boost { 2.0 } else { 1.0 } * inner_demon_mult(ev.inner_demon);
             let gain = if is_working {
                 // 打工每5秒tick约+1.5修为（100修为≈5-6分钟）
                 0.3 * dt * mult
@@ -480,18 +506,20 @@ impl PetState {
 
         // ===== 过劳检查（修仙模式：走火入魔 / 普通模式：进医院）=====
         if self.stamina <= 0.0 {
-            if ev.cultivation_mode && ev.item_life_pill > 0 {
-                // 续命丹救命：消耗一颗，体力回 50
+            if ev.cultivation_mode && ev.item_life_pill > 0 && !inner_demon_critical(ev.inner_demon) {
+                // 续命丹救命：消耗一颗，体力回 50（心魔≥60时无效，直接走火入魔）
                 ev.item_life_pill -= 1;
                 self.stamina = 50.0;
                 self.mood = (self.mood + 10.0).min(100.0);
                 events.push(TickEvent::LifeSaved);
             } else if ev.cultivation_mode {
-                // 修仙模式过劳 → 走火入魔（不进医院，不打断修炼）
-                // 气血逆流：体力恢复到30，心情-20，修为-30
+                // 修仙模式过劳 → 走火入魔（积累心魔，高境界更多）
+                ev.inner_demon = (ev.inner_demon + 10.0 + ev.cultivation_realm as f32 * 2.0).min(100.0);
+                // 心魔≥80时惩罚加倍
+                let exp_loss = if ev.inner_demon >= 80.0 { 50.0 } else { 30.0 };
                 self.stamina = 30.0;
                 self.mood = (self.mood - 20.0).max(0.0);
-                ev.cultivation_exp = (ev.cultivation_exp - 30.0).max(0.0);
+                ev.cultivation_exp = (ev.cultivation_exp - exp_loss).max(0.0);
                 events.push(TickEvent::CultDeviation);
             } else {
                 // 普通模式 → 进医院
@@ -597,6 +625,7 @@ impl PetState {
             exp: ev.cultivation_exp,
             savings: self.savings,
             stamina: self.stamina,
+            inner_demon: ev.inner_demon,
             qi_pill: ev.item_qi_pill,
             life_pill: ev.item_life_pill,
             spirit_talisman: ev.item_spirit_talisman,
@@ -740,7 +769,11 @@ impl PetState {
             "spell_swords" => { ev.spell_swords = 1; }
             "spell_armageddon" => { ev.spell_armageddon = 1; }
             // 心魔丹：增加突破成功率+5%，计数+1
-            "heart_devil_pill" => { ev.heart_devil_pills_used += 1; }
+            "heart_devil_pill" => {
+                ev.heart_devil_pills_used += 1;
+                // 心魔丹效果：降低25点心魔（以毒攻毒，镇压心魔）
+                ev.inner_demon = (ev.inner_demon - 25.0).max(0.0);
+            }
             _ => {}
         }
         events.push(CultEvent::Bought {
@@ -806,6 +839,10 @@ impl PetState {
             ev.cultivation_exp = (ev.cultivation_exp + gain_exp).min(100.0);
         }
         self.hourly_wage = (self.hourly_wage + gain_wage).min(200.0);
+        // 冰封术特殊效果：以冰之纯净冻结心魔，-15
+        if spell == "ice" {
+            ev.inner_demon = (ev.inner_demon - 15.0).max(0.0);
+        }
         Ok(vec![CultEvent::SpellCast { spell: spell.to_string() }])
     }
 
@@ -883,6 +920,7 @@ impl PetState {
             ev.task_bonus = 0;
             ev.heart_devil_pills_used = 0;
             ev.realm_task_done = false;
+            ev.inner_demon = 0.0; // 升境界后心魔清零
             if ev.cultivation_realm >= 6 {
                 events.push(CultEvent::Ascension);
             } else {
@@ -916,6 +954,8 @@ impl PetState {
                     self.stamina = 10.0;
                 }
             }
+            // 突破失败积累心魔（高境界更多）
+            ev.inner_demon = (ev.inner_demon + 15.0 + ev.cultivation_realm as f32 * 3.0).min(100.0);
             events.push(CultEvent::Deviation);
         }
         Ok(events)

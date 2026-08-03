@@ -1161,6 +1161,30 @@ function drawRealmAura(now) {
   if (!cultMode || cultRealm < 1) return;
   const t = now / 1000; // 秒
 
+  // ===== 心魔效果：心魔≥30 时暗紫魔气缠绕（≥60 更浓） =====
+  if (cultDemon >= 30) {
+    ctx.globalCompositeOperation = "lighter";
+    const intensity = cultDemon >= 80 ? 0.5 : cultDemon >= 60 ? 0.35 : 0.2;
+    const count = cultDemon >= 60 ? 8 : 5;
+    for (let j = 0; j < count; j++) {
+      const a = t * 0.8 + j * (Math.PI * 2 / count);
+      const r = 24 + Math.sin(t * 2 + j) * 4;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r * 0.7 - 4;
+      ctx.fillStyle = `rgba(120, 40, 140, ${intensity})`;
+      ctx.beginPath();
+      ctx.arc(px, py, 4 + Math.sin(t * 3 + j) * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 心魔≥60：红眼光
+    if (cultDemon >= 60) {
+      ctx.fillStyle = `rgba(255, 50, 50, ${0.4 + Math.sin(t * 4) * 0.2})`;
+      ctx.beginPath(); ctx.arc(-4, -8, 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(4, -8, 1.2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
   // ===== 练气(1)+：青色灵气 —— 绕体旋转的气点 + 柔光晕 =====
   if (cultRealm >= 1) {
     ctx.globalCompositeOperation = "lighter";
@@ -2003,10 +2027,13 @@ const cultRealmEl = document.getElementById("cult-realm");
 const barExp = document.getElementById("bar-exp");
 const barCultStamina = document.getElementById("bar-cult-stamina");
 const barCultMood = document.getElementById("bar-cult-mood");
+const barCultDemon = document.getElementById("bar-cult-demon");
+const cultDemonRow = document.getElementById("cult-demon-row");
 const statsPanel = document.getElementById("stats-panel");
 let cultMode = false;
 let cultRealm = 0; // 当前境界 0-6（render 循环读取，画光环/金丹等）
 let currentMount = 0; // 当前装备坐骑 0=无, 1-5
+let cultDemon = 0; // 心魔值 0-100
 const REALM_NAMES = ["凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升"];
 
 // 坐骑装备/卸下事件
@@ -2029,9 +2056,13 @@ listen("cultivation-update", (event) => {
     cultPanel.hidden = true;
   }
   cultRealm = c.realm || 0;
+  cultDemon = c.inner_demon || 0;
   if (cultMode) {
     if (cultRealmEl) cultRealmEl.textContent = REALM_NAMES[c.realm] || "凡人";
     if (barExp) barExp.style.width = `${Math.max(0, Math.min(100, c.exp))}%`;
+    // 心魔条（心魔>0时显示）
+    if (cultDemonRow) cultDemonRow.hidden = cultDemon < 1;
+    if (barCultDemon) barCultDemon.style.width = `${Math.max(0, Math.min(100, cultDemon))}%`;
   }
 });
 
