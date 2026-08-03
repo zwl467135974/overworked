@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// 固定的动作清单（18 个，终极形态）。
+/// 固定的动作清单（22 个：18 普通 + 4 修仙）。
 /// idle 必须存在作为 fallback。顺序无功能意义，仅文档可读性。
 pub const ACTIONS: &[&str] = &[
     // 状态动作（7）
@@ -42,6 +42,28 @@ pub const ACTIONS: &[&str] = &[
     "lunchnap",     // 午休趴睡
     "payday",       // 发工资数钱
     "vacation",     // 度假
+    // 修仙专属动作（20）—— 每个普通动作都有对应修仙版，1:1 映射
+    "cult_idle",        // 打坐待机（替代 idle）
+    "cult_work",        // 修炼运功（替代 working）
+    "cult_poke",        // 被戳灵力激荡（替代 poke）
+    "cult_tired",       // 灵力不足（替代 tired）
+    "cult_exhausted",   // 灵力枯竭（替代 exhausted）
+    "cult_overworked",  // 灵力紊乱（替代 overworked）
+    "cult_nightshift",  // 吐纳月华（替代 nightshift）
+    "cult_happy",       // 金光喜悦（替代 happy）
+    "cult_drag",        // 灵力护盾（替代 drag）
+    "cult_walk",        // 御剑侧飘（替代 walk）
+    "cult_jump",        // 凌空腾跃（替代 jump）
+    "cult_leave",       // 封山退隐（替代 leave）
+    "cult_return",      // 重塑金身（替代 return）
+    "cult_teambuilding",// 灵酒论道（替代 teambuilding）
+    "cult_lunchnap",    // 入定冥想（替代 lunchnap）
+    "cult_payday",      // 灵石雨（替代 payday）
+    "cult_vacation",    // 云游四方（替代 vacation）
+    "breakthrough",     // 突破庆祝（突破成功，替代 promoted）
+    "flying",           // 御剑飞行（有坐骑时）
+    "deviation",        // 走火入魔（魔气缠身）
+    "ascend",           // 飞升（金光升华）
 ];
 
 /// 单个动作的帧信息。

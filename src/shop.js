@@ -16,11 +16,11 @@ const MOUNTS = [
   { id: 5, key: "mount_phoenix", name: "凤凰", icon: "凤", price: 15000, minRealm: 5, desc: "火凤展翅，烈焰拖尾" },
 ];
 const SPELLS = [
-  { key: "fireball", name: "火球术", icon: "火", price: 300, desc: "红橙火球爆裂" },
-  { key: "ice", name: "冰封术", icon: "冰", price: 600, desc: "蓝白冰晶绽放" },
-  { key: "thunder", name: "雷劫术", icon: "雷", price: 1200, desc: "紫白闪电劈下" },
-  { key: "swords", name: "万剑诀", icon: "剑", price: 3000, desc: "数十光剑天降" },
-  { key: "armageddon", name: "天地同寿", icon: "灭", price: 8000, desc: "五色光柱冲天" },
+  { key: "fireball",  name: "火球术",   icon: "火", price: 300,  staminaCost: 10, gainExp: 5,  gainWage: 3,  desc: "红橙火球爆裂" },
+  { key: "ice",       name: "冰封术",   icon: "冰", price: 600,  staminaCost: 15, gainExp: 8,  gainWage: 5,  desc: "蓝白冰晶绽放" },
+  { key: "thunder",   name: "雷劫术",   icon: "雷", price: 1200, staminaCost: 20, gainExp: 12, gainWage: 8,  desc: "紫白闪电劈下" },
+  { key: "swords",    name: "万剑诀",   icon: "剑", price: 3000, staminaCost: 30, gainExp: 18, gainWage: 12, desc: "数十光剑天降" },
+  { key: "armageddon", name: "天地同寿", icon: "灭", price: 8000, staminaCost: 45, gainExp: 25, gainWage: 18, desc: "五色光柱冲天" },
 ];
 const ITEM_PRICE = {
   qi_pill: 50,
@@ -77,24 +77,28 @@ function renderMounts(data) {
   }
 }
 
-/** 渲染法术列表 */
+/** 渲染法术列表（永久解锁制：买一次永久拥有，施法消耗体力） */
 function renderSpells(data) {
   spellList.innerHTML = "";
   for (const s of SPELLS) {
-    const count = data.spells[SPELLS.indexOf(s)];
+    const owned = data.spells[SPELLS.indexOf(s)] > 0;
+    const stamina = data.stamina || 0;
+    const canCast = owned && stamina >= s.staminaCost;
     const card = document.createElement("div");
     card.className = "item-card";
     card.innerHTML = `
       <div class="item-icon spell-icon">${s.icon}</div>
       <div class="item-info">
-        <div class="item-name">${s.name} ${count > 0 ? `<span class="stock-tag">×${count}</span>` : ""}</div>
-        <div class="item-desc">${s.desc}</div>
+        <div class="item-name">${s.name} ${owned ? `<span class="owned-tag">✓已习得</span>` : ""}</div>
+        <div class="item-desc">${s.desc}${owned ? ` · 耗体力${s.staminaCost} 修为+${s.gainExp} 时薪+${s.gainWage}` : ""}</div>
       </div>
       <div class="item-right">
-        <div class="item-price">${s.price}</div>
+        ${owned ? "" : `<div class="item-price">${s.price}</div>`}
         <div class="btn-group">
-          <button class="btn-buy" data-item="${s.key}" ${data.savings < s.price ? "disabled" : ""}>购买</button>
-          ${count > 0 ? `<button class="btn-cast" data-spell="${s.key}">施展</button>` : ""}
+          ${owned
+            ? `<button class="btn-cast" data-spell="${s.key}" ${canCast ? "" : "disabled"}>施展(-${s.staminaCost})</button>`
+            : `<button class="btn-buy" data-item="${s.key}" ${data.savings < s.price ? "disabled" : ""}>购买</button>`
+          }
         </div>
       </div>
     `;
@@ -185,7 +189,13 @@ function showToast(msg, type = "") {
 async function refresh() {
   try {
     const data = await invoke("get_shop_data");
+    // 用模块级快照 lastStones/lastExp 对比新数据，累计任务进度
+    trackDeltaTasks(data);
     window._lastShopData = data;
+    // 首次刷新时从后端加载日常任务
+    if (dailyTaskState.length === 0 && !dailyTaskDate) {
+      await loadDailyTasks(data.realm);
+    }
     render(data);
     // 移除加载提示
     const loading = document.getElementById("loading");
@@ -223,6 +233,7 @@ async function equip(mountId) {
 async function cast(spell) {
   try {
     await invoke("cast_spell", { spell });
+    addTaskProgress("cast_spell", 1);
     showToast("施展！", "success");
   } catch (e) {
     showToast(String(e), "error");
@@ -258,23 +269,105 @@ listen("realm-up", () => { showToast("突破成功！", "success"); refresh(); }
 listen("cult-deviation", () => { showToast("走火入魔！修为清零", "error"); refresh(); });
 listen("cult-ascension", () => { showToast("恭喜飞升！", "success"); refresh(); });
 listen("mount-equipped", () => refresh());
-listen("spell-cast", () => refresh());
+listen("spell-cast", () => { addTaskProgress("cast_spell", 1); refresh(); });
+listen("pomodoro-complete", () => { addTaskProgress("pomodoro", 1); refresh(); });
 listen("tauri://focus", () => refresh());
 
-// ===== 日常任务系统 =====
+// ===== 日常任务系统（持久化到后端 settings 表）=====
 const DAILY_TASKS = [
   { id: "work_stones", name: "打工攒灵石", desc: (n) => `打工获得 ${n} 灵石`, target: (realm) => 100 + realm * 50, reward_stones: 80, reward_exp: 5 },
-  { id: "pomodoro", name: "专注修炼", desc: "完成 1 次番茄钟（专注25分钟）", target: 1, reward_stones: 150, reward_exp: 15 },
+  { id: "pomodoro", name: "专注修炼", desc: "完成 1 次专注（持续打字5分钟）", target: 1, reward_stones: 150, reward_exp: 15 },
   { id: "cast_spell", name: "施展法术", desc: "施展 1 次法术", target: 1, reward_stones: 100, reward_exp: 8 },
   { id: "idle_cultivate", name: "静心打坐", desc: "挂机积累修为 10 点", target: 10, reward_stones: 60, reward_exp: 10 },
 ];
 let dailyTaskState = []; // [{task, progress, claimed}]
+// 上一次刷新时的灵石/修为快照，用于增量计任务进度
+let lastStones = null;
+let lastExp = null;
+// 今日日期标记（跨天重置任务）
+let dailyTaskDate = "";
+
+/** 获取今日日期字符串 YYYY-MM-DD */
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** 从后端加载日常任务状态（含跨天重置） */
+async function loadDailyTasks(realm) {
+  try {
+    const json = await invoke("get_daily_tasks");
+    if (json) {
+      const saved = JSON.parse(json);
+      // 跨天重置：日期不同则重新生成
+      if (saved.date === todayStr() && saved.tasks && saved.tasks.length > 0) {
+        // 恢复保存的任务（把 id 映射回完整 task 定义）
+        dailyTaskState = saved.tasks.map(s => {
+          const task = DAILY_TASKS.find(t => t.id === s.id);
+          return task ? { task, progress: s.progress || 0, claimed: !!s.claimed } : null;
+        }).filter(Boolean);
+        dailyTaskDate = saved.date;
+        return;
+      }
+    }
+  } catch (e) { console.warn("loadDailyTasks", e); }
+  // 首次或跨天：生成新任务
+  dailyTaskState = generateDailyTasks(realm);
+  dailyTaskDate = todayStr();
+  await persistDailyTasks();
+}
+
+/** 保存日常任务状态到后端 */
+async function persistDailyTasks() {
+  const data = {
+    date: dailyTaskDate,
+    tasks: dailyTaskState.map(dt => ({ id: dt.task.id, progress: dt.progress, claimed: dt.claimed })),
+  };
+  try {
+    await invoke("save_daily_tasks", { data: JSON.stringify(data) });
+  } catch (e) { console.warn("persistDailyTasks", e); }
+}
+
+/** 增加某个任务进度（不超过 target，已领取则忽略），变化后持久化 */
+function addTaskProgress(taskId, amount) {
+  let changed = false;
+  for (const dt of dailyTaskState) {
+    if (dt.task.id !== taskId || dt.claimed) continue;
+    const data = window._lastShopData;
+    const target = typeof dt.task.target === "function" ? dt.task.target(data?.realm || 1) : dt.task.target;
+    if (dt.progress < target) {
+      dt.progress = Math.min(target, dt.progress + amount);
+      changed = true;
+    }
+  }
+  if (changed) persistDailyTasks();
+}
+
+/** 比较新旧快照，把灵石/修为增量累计到对应任务 */
+function trackDeltaTasks(data) {
+  // 注意：ShopData 里灵石字段叫 savings（与存款共用）
+  const stones = data.savings;
+  if (lastStones !== null && stones > lastStones) {
+    // 只统计"赚到的"灵石（不算花掉的），所以仅正向增量
+    addTaskProgress("work_stones", Math.floor(stones - lastStones));
+  }
+  if (lastExp !== null && data.exp > lastExp) {
+    addTaskProgress("idle_cultivate", data.exp - lastExp);
+  }
+  lastStones = stones;
+  lastExp = data.exp;
+}
 
 function generateDailyTasks(realm) {
-  // 随机选3个不同任务
-  const pool = [...DAILY_TASKS];
-  const selected = [];
-  for (let i = 0; i < 3 && pool.length > 0; i++) {
+  // 从4个任务中选3个，保证至少1个"易完成"任务（work_stones/cast_spell）
+  // pomodoro 最难（需持续专注5分钟），不保证出现
+  const easy = DAILY_TASKS.filter(t => t.id === "work_stones" || t.id === "cast_spell");
+  const hard = DAILY_TASKS.filter(t => t.id === "pomodoro" || t.id === "idle_cultivate");
+  // 先从易任务里必选1个
+  const mustEasy = easy[Math.floor(Math.random() * easy.length)];
+  const selected = [{ task: mustEasy, progress: 0, claimed: false }];
+  // 剩余从其他任务里随机选2个
+  const pool = DAILY_TASKS.filter(t => t.id !== mustEasy.id);
+  for (let i = 0; i < 2 && pool.length > 0; i++) {
     const idx = Math.floor(Math.random() * pool.length);
     const task = pool.splice(idx, 1)[0];
     selected.push({ task, progress: 0, claimed: false });
@@ -283,8 +376,15 @@ function generateDailyTasks(realm) {
 }
 
 function renderTasks(data) {
-  if (!dailyTaskState || dailyTaskState.length === 0) {
+  // 跨天检测：如果日期变了，重新生成（loadDailyTasks 是异步的，这里做同步兜底）
+  if (dailyTaskDate && dailyTaskDate !== todayStr()) {
     dailyTaskState = generateDailyTasks(data.realm);
+    dailyTaskDate = todayStr();
+    persistDailyTasks();
+  }
+  if (!dailyTaskState || dailyTaskState.length === 0) {
+    // 首次渲染时还没加载完，loadDailyTasks 在 refresh 里已调用
+    return;
   }
   const container = document.getElementById("daily-tasks");
   container.innerHTML = "";
@@ -292,17 +392,21 @@ function renderTasks(data) {
     const target = typeof dt.task.target === "function" ? dt.task.target(data.realm) : dt.task.target;
     const done = dt.progress >= target;
     const desc = typeof dt.task.desc === "function" ? dt.task.desc(target) : dt.task.desc;
+    let btnText, btnDisabled, iconText;
+    if (dt.claimed) { btnText = "已领取"; btnDisabled = true; iconText = "✓"; }
+    else if (done)  { btnText = "领取";   btnDisabled = false; iconText = "✓"; }
+    else            { btnText = "未完成"; btnDisabled = true; iconText = "▶"; }
     const card = document.createElement("div");
     card.className = "item-card daily-task-card";
     card.innerHTML = `
-      <div class="item-icon task-icon">${done ? "✓" : "▶"}</div>
+      <div class="item-icon task-icon">${iconText}</div>
       <div class="item-info">
         <div class="item-name">${dt.task.name}</div>
         <div class="item-desc">${desc} <span class="task-progress">(${Math.min(dt.progress, target)}/${target})</span></div>
       </div>
       <div class="item-right">
         <div class="task-reward">◈${dt.task.reward_stones}</div>
-        <button class="btn-claim" data-task="${dt.task.id}" ${done ? "" : "disabled"}>${done ? "领取" : "未完成"}</button>
+        <button class="btn-claim" data-task="${dt.task.id}" ${btnDisabled ? "disabled" : ""}>${btnText}</button>
       </div>
     `;
     container.appendChild(card);
@@ -484,16 +588,22 @@ document.getElementById("btn-realm-task").addEventListener("click", () => {
 // 日常任务领取按钮（事件委托）
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-task]");
-  if (!btn || btn.disabled) return;
+  if (!btn) return;
+  if (btn.disabled) { showToast("任务未完成", "error"); return; }
   const taskId = btn.dataset.task;
   const dt = dailyTaskState.find((d) => d.task.id === taskId);
-  if (!dt || dt.claimed) return;
+  if (!dt) { showToast("找不到任务: " + taskId, "error"); return; }
+  if (dt.claimed) { showToast("已领取过", "error"); return; }
   const target = typeof dt.task.target === "function" ? dt.task.target(window._lastShopData?.realm || 1) : dt.task.target;
-  if (dt.progress < target) return;
+  if (dt.progress < target) {
+    showToast(`进度不足: ${dt.progress}/${target}`, "error");
+    return;
+  }
   dt.claimed = true;
+  persistDailyTasks();
   invoke("claim_daily_reward", { spiritStones: dt.task.reward_stones, exp: dt.task.reward_exp })
     .then(() => showToast(`领取 ${dt.task.reward_stones} 灵石！`, "success"))
-    .catch((err) => showToast(String(err), "error"))
+    .catch((err) => { showToast(String(err), "error"); dt.claimed = false; persistDailyTasks(); })
     .finally(() => refresh());
 });
 

@@ -305,6 +305,12 @@ body {
   background: #6a3a2a;
   color: #ffb890;
 }
+.btn-cast:disabled {
+  opacity: 0.4;
+  cursor: default;
+  color: #8a6450;
+  border-color: #4a2820;
+}
 
 .btn-group {
   display: flex;
@@ -336,6 +342,12 @@ body {
   font-size: 10px;
   font-weight: normal;
   color: #6ad7c1;
+  margin-left: 4px;
+}
+.owned-tag {
+  font-size: 10px;
+  font-weight: normal;
+  color: #ffd97a;
   margin-left: 4px;
 }
 
@@ -485,6 +497,11 @@ body {
 }
 
 /* ===== 剧情遮罩 ===== */
+/* 注意：display:flex 会覆盖 hidden 属性，必须显式声明 [hidden] */
+[hidden] {
+  display: none !important;
+}
+
 .story-overlay {
   position: fixed;
   inset: 0;

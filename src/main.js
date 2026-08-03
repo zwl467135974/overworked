@@ -37,6 +37,45 @@ const EXPR_TO_ACTION = {
   Chaotic: "working",
 };
 
+/**
+ * 统一动作解析：修仙模式下把普通动作映射到修仙版，杜绝闪现旧形象。
+ * 覆盖所有 18 个普通动作 + 7 个修仙动作（透传）。
+ * 策略：
+ *   - 有坐骑：常态动作(idle/working/...)→flying
+ *   - 无坐骑：idle→cult_idle, working→cult_work, 疲惫类→cult_idle,
+ *             事件庆祝类(happy/promoted/payday/...)→breakthrough, 特殊状态→cult_idle
+ */
+const CULT_ACTION_MAP_NO_MOUNT = {
+  idle: "cult_idle",
+  working: "cult_work",
+  poke: "cult_poke",
+  tired: "cult_tired",
+  exhausted: "cult_exhausted",
+  overworked: "cult_overworked",
+  nightshift: "cult_nightshift",
+  happy: "cult_happy",
+  drag: "cult_drag",
+  walk: "cult_walk",
+  jump: "cult_jump",
+  leave: "cult_leave",
+  return: "cult_return",
+  promoted: "breakthrough",
+  teambuilding: "cult_teambuilding",
+  lunchnap: "cult_lunchnap",
+  payday: "cult_payday",
+  vacation: "cult_vacation",
+};
+/** 修仙模式下，常态状态在有坐骑时一律显示飞行 */
+const FLYING_ACTIONS = new Set(["idle","working","cult_idle","cult_work","cult_tired","cult_exhausted","cult_overworked","cult_nightshift","cult_lunchnap","cult_happy","cult_walk"]);
+function resolveAction(action) {
+  if (!cultMode) return action;
+  // 有坐骑：常态动作 → flying
+  if (currentMount > 0 && FLYING_ACTIONS.has(action)) return "flying";
+  // 已是修仙动作 → 透传
+  if (action.startsWith("cult_") || ["breakthrough","flying","deviation","ascend"].includes(action)) return action;
+  return CULT_ACTION_MAP_NO_MOUNT[action] || "cult_idle";
+}
+
 // ===== 皮肤数据 =====
 let currentSkin = "default";
 let skinInfo = null; // { name, actions: { idle: {frames:3}, ... } }
@@ -104,9 +143,38 @@ async function loadSkin(skinName) {
   console.log(`[skin] 加载皮肤 ${info.name}：${Object.keys(info.actions).length} 动作, ${(info.mounts||[]).length} 坐骑图, ${(info.spells||[]).length} 法术图`);
 }
 
-/** 取某动作的帧序列（缺失 fallback 到 idle） */
+/** 取某动作的帧序列（缺失 fallback）。
+ *  修仙动作 fallback 链：缺失时降级到语义最接近的普通动作。
+ */
+const CULT_FALLBACK = {
+  cult_idle: ["idle"],
+  cult_work: ["working"],
+  cult_poke: ["poke"],
+  cult_tired: ["tired", "cult_idle", "idle"],
+  cult_exhausted: ["exhausted", "cult_idle", "idle"],
+  cult_overworked: ["overworked", "cult_idle", "idle"],
+  cult_nightshift: ["nightshift", "cult_idle", "idle"],
+  cult_happy: ["happy", "breakthrough", "promoted"],
+  cult_drag: ["drag", "cult_poke", "poke"],
+  cult_walk: ["walk", "cult_idle", "idle"],
+  cult_jump: ["jump", "cult_poke", "poke"],
+  cult_leave: ["leave", "deviation", "overworked"],
+  cult_return: ["return", "breakthrough", "promoted"],
+  cult_teambuilding: ["teambuilding", "cult_happy", "happy"],
+  cult_lunchnap: ["lunchnap", "cult_idle", "idle"],
+  cult_payday: ["payday", "cult_happy", "happy"],
+  cult_vacation: ["vacation", "cult_walk", "walk"],
+  flying: ["cult_idle", "idle"],
+  breakthrough: ["promoted"],
+  deviation: ["overworked"],
+  ascend: ["breakthrough", "promoted"],
+};
 function getFrames(action) {
-  return frameCache[action] || frameCache.idle || [];
+  if (frameCache[action] && frameCache[action].length > 0) return frameCache[action];
+  for (const fb of CULT_FALLBACK[action] || []) {
+    if (frameCache[fb] && frameCache[fb].length > 0) return frameCache[fb];
+  }
+  return frameCache.idle || [];
 }
 
 // ===== 动作状态机 =====
@@ -131,6 +199,18 @@ const ONE_SHOT_LOOPS = {
   leave: 2,
   return: 3,
   happy: 2,
+  // 修仙一次性动作
+  cult_poke: 2,
+  cult_happy: 3,
+  cult_drag: 999,       // 持续到 mouseup（和 drag 一样）
+  cult_jump: 2,
+  cult_leave: 2,
+  cult_return: 3,
+  cult_teambuilding: 4,
+  cult_payday: 4,
+  breakthrough: 4,
+  deviation: 3,
+  ascend: 4,
 };
 
 // 一次性动作触发
@@ -171,10 +251,12 @@ let walkTimer = null;
 let walkDir = 1; // 1=向右, -1=向左
 
 async function startWalking() {
-  const frames = getFrames("walk");
+  // 修仙模式用 flying（御剑漫步），普通模式用 walk
+  const walkAct = resolveAction("walk");
+  const frames = getFrames(walkAct);
   if (frames.length === 0) return;
   // 设为持续动作（hold 模式，循环播放侧面帧）
-  oneShotAction = "walk";
+  oneShotAction = walkAct;
   oneShotFrame = 0;
   holdAction = true;
   lastFrameTime = performance.now();
@@ -278,7 +360,7 @@ async function doFall(screenH, scaleFactor) {
   let bounces = 0;
   const maxBounces = 2;
 
-  triggerHoldAction("drag"); // 掉落挣扎
+  triggerHoldAction(resolveAction("drag")); // 掉落挣扎（修仙：灵力激荡）
 
   physicsTimer = setInterval(async () => {
     vy += gravity;
@@ -325,7 +407,7 @@ function strollOnGround(startX, groundY, screenW, scaleFactor) {
   let traveled = 0;
 
   walkDir = dir;
-  triggerHoldAction("walk");
+  triggerHoldAction(resolveAction("walk"));
 
   let bounces = 0;
   const maxBounces = 2; // 撞墙最多回弹2次
@@ -377,13 +459,15 @@ let currentPayload = {
 
 // ===== 交互：单击 poke / 拖动分离 =====
 // 拖动：左键=移位（不掉）。掉落走右键菜单「掉下去」。
-// poke：左键短按未移动。
+// poke：左键短按未移动。修仙模式下用 cult_poke（灵力激荡反应）。
 let mouseDown = null;
+/** 根据 cultMode 选择对应的 poke 动作名 */
+function pokeAction() { return resolveAction("poke"); }
 
 canvas.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
   mouseDown = { x: e.screenX, y: e.screenY, t: performance.now(), dragged: false };
-  triggerHoldAction("poke");
+  triggerHoldAction(pokeAction());
 });
 
 canvas.addEventListener("mousemove", (e) => {
@@ -393,7 +477,7 @@ canvas.addEventListener("mousemove", (e) => {
   if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
     mouseDown.dragged = true;
     endHoldAction();
-    triggerHoldAction("drag");
+    triggerHoldAction(resolveAction("drag"));
     win.startDragging();
   }
 });
@@ -1291,9 +1375,9 @@ function render(now) {
   // 随机触发 walk/jump（无一次性动作时）
   if (!oneShotAction && !holdAction && now >= nextAmbient) {
     if (Math.random() < 0.5) {
-      startWalking(); // walk：窗口平移 + 侧面动画
+      startWalking(); // walk/flying：窗口平移 + 动画
     } else {
-      triggerOneShot("jump");
+      triggerOneShot(resolveAction("jump"));
     }
     nextAmbient = now + 15000 + Math.random() * 20000;
   }
@@ -1340,8 +1424,8 @@ function render(now) {
     ctx.save();
     // 中心点：X=60(居中), Y=56(略偏上，给坐骑留下方空间)
     ctx.translate(60 + bounceDx, 56 + bounceDy);
-    // walk 朝左时水平镜像（一套朝右帧，双向走）
-    if (oneShotAction === "walk" && walkDir < 0) {
+    // walk/flying 朝左时水平镜像（一套朝右帧，双向走）
+    if ((oneShotAction === "walk" || oneShotAction === "flying") && walkDir < 0) {
       ctx.scale(-1, 1);
     }
     if (!oneShotAction) {
@@ -1579,13 +1663,13 @@ listen("fx-toggled", (event) => {
 // Boss来了 → 惊恐弹起（poke 动作 + 额外震动）
 listen("boss-incoming", () => {
   endHoldAction();
-  triggerOneShot("poke");
+  triggerOneShot(pokeAction());
   // 全屏震动特效（在 fx-overlay 画）
 });
 // 投喂咖啡 → poke 动作（喝咖啡反应）
 listen("coffee-boost", () => {
   endHoldAction();
-  triggerOneShot("poke");
+  triggerOneShot(pokeAction());
 });
 
 function computeBounce(kind, t) {
@@ -1701,7 +1785,7 @@ listen("expression-changed", (event) => {
     bounce: p.bounce,
   };
   // 状态动作切换（不打断一次性动作；预览模式期间不覆盖）
-  const newAction = EXPR_TO_ACTION[p.expression] || "idle";
+  const newAction = resolveAction(EXPR_TO_ACTION[p.expression] || "idle");
   const inPreview = performance.now() < previewUntil;
   if (!inPreview) {
     if (newAction !== currentState && !oneShotAction) {
@@ -1738,7 +1822,7 @@ listen("skin-switched", async (event) => {
 });
 
 // 动作预览（右键菜单"动作预览"手动触发）
-const STATE_ACTIONS = ["idle", "working", "tired", "exhausted", "overworked", "nightshift", "happy", "promoted", "lunchnap", "vacation"];
+const STATE_ACTIONS = ["idle","working","tired","exhausted","overworked","nightshift","happy","promoted","lunchnap","vacation","poke","drag","walk","jump","leave","return","teambuilding","payday","cult_idle","cult_work","cult_poke","cult_tired","cult_exhausted","cult_overworked","cult_nightshift","cult_happy","cult_drag","cult_walk","cult_jump","cult_leave","cult_return","cult_teambuilding","cult_lunchnap","cult_payday","cult_vacation","breakthrough","flying","deviation","ascend"];
 let previewUntil = 0; // 预览模式结束时间，期间真实感知不覆盖状态
 listen("preview-action", (event) => {
   const action = event.payload;
@@ -1754,22 +1838,22 @@ listen("preview-action", (event) => {
   } else if (action === "walk") {
     startWalking();
   } else if (action === "poke") {
-    triggerHoldAction("poke");
+    triggerHoldAction(pokeAction());
   } else {
     // jump 等一次性动作
     triggerOneShot(action);
   }
 });
 
-// 特殊事件：番茄钟完成 → Happy 庆祝
+// 特殊事件：番茄钟完成 → Happy 庆祝（修仙：突破金光）
 listen("pomodoro-complete", () => {
   endHoldAction();
-  triggerOneShot("happy");
+  triggerOneShot(resolveAction("happy"));
 });
-// 进医院 → 强制 exhausted
+// 进医院 → 强制 exhausted（修仙模式不会进医院，走火入魔走 deviation）
 listen("hospital-admit", () => {
   endHoldAction();
-  currentState = "exhausted";
+  currentState = resolveAction("exhausted");
   stateFrame = 0;
   previewUntil = performance.now() + 300000; // 冻结5分钟（医院期间不被动覆盖）
 });
@@ -1779,32 +1863,32 @@ listen("hospital-discharge", () => {
 });
 
 // ===== Phase 3 特殊事件 =====
-// 午休 → 切 lunchnap 状态（持续到时段结束/开始打字）
+// 午休 → 切 lunchnap 状态（修仙：打坐冥想）
 listen("lunch-nap", () => {
   endHoldAction();
-  currentState = "lunchnap";
+  currentState = resolveAction("lunchnap");
   stateFrame = 0;
   previewUntil = performance.now() + 600000; // 冻结10分钟（午休期间）
 });
-// 发工资 → 播 payday 动作
+// 发工资 → 播 payday 动作（修仙：灵石到账→突破金光）
 listen("payday", () => {
   endHoldAction();
-  triggerOneShot("payday");
+  triggerOneShot(resolveAction("payday"));
 });
-// 团建 → 播 teambuilding 动作
+// 团建 → 播 teambuilding 动作（修仙：灵力激荡）
 listen("team-building", () => {
   endHoldAction();
-  triggerOneShot("teambuilding");
+  triggerOneShot(resolveAction("teambuilding"));
 });
-// 升职 → 播 promoted 庆祝动画后回正常（升职是永久的，但不需要一直摆pose）
+// 升职 → 播 promoted 庆祝动画（修仙：突破）
 listen("promoted", () => {
   endHoldAction();
-  triggerOneShot("promoted");
+  triggerOneShot(resolveAction("promoted"));
 });
-// 度假 → 切 vacation 状态
+// 度假 → 切 vacation 状态（修仙：御剑云游）
 listen("vacation-start", () => {
   endHoldAction();
-  currentState = "vacation";
+  currentState = resolveAction("vacation");
   stateFrame = 0;
   // 度假持续几天，previewUntil 设很长
   previewUntil = performance.now() + 3 * 86400000;
@@ -1813,16 +1897,16 @@ listen("vacation-start", () => {
 listen("vacation-end", () => {
   previewUntil = 0;
 });
-// 离职 → 播 leave 动作
+// 离职 → 播 leave 动作（修仙：心魔入体→走火入魔）
 listen("leave-event", () => {
   endHoldAction();
-  triggerOneShot("leave");
+  triggerOneShot(resolveAction("leave"));
   previewUntil = performance.now() + 3 * 86400000; // 离职3天
 });
-// 回归 → 播 return 动作
+// 回归 → 播 return 动作（修仙：重整道心→突破）
 listen("return-from-leave", () => {
   previewUntil = 0;
-  triggerOneShot("return");
+  triggerOneShot(resolveAction("return"));
 });
 
 // 数值细条更新（红线2 调整后：四属性对前端可见）
@@ -1847,6 +1931,19 @@ listen("stats-update", (event) => {
   targetStamina = Math.max(0, Math.min(100, s.stamina));
   targetMood = Math.max(0, Math.min(100, s.mood));
   if (numWage) numWage.textContent = s.hourly_wage.toFixed(0);
+
+  // 特殊状态横幅（度假/离职/住院 → 数值暂停提示）
+  const banner = document.getElementById("status-banner");
+  if (banner) {
+    const statusText = {
+      Vacation: "🏖 度假中 · 数值暂停",
+      OnLeave: "📦 离职期 · 数值暂停",
+      Hospital: "🏥 住院中 · 数值暂停",
+    };
+    const text = statusText[s.status];
+    if (text) { banner.textContent = text; banner.hidden = false; }
+    else { banner.hidden = true; }
+  }
 
   // 存款增加特效
   const newSavings = Math.floor(s.savings);
@@ -1938,27 +2035,36 @@ listen("cultivation-update", (event) => {
   }
 });
 
-// 开启修仙 → 庆祝动作
+// 开启修仙 → 突破庆祝动作（金色道袍 + 金光，比 promoted 更有仪式感）
 listen("cultivation-on", () => {
+  cultMode = true; // 立即置位，避免后续 expression-changed 闪现旧形象
+  // 强制把当前状态切到修仙版，不等下一个 expression 推送
+  currentState = currentMount > 0 ? "flying" : "cult_idle";
+  stateFrame = 0;
   endHoldAction();
-  triggerOneShot("promoted"); // 复用升职庆祝动画
+  triggerOneShot("breakthrough");
 });
 // 切回普通
 listen("cultivation-off", () => {
+  cultMode = false; // 立即置位
+  currentState = "idle"; // 强制切回普通动作
+  stateFrame = 0;
   previewUntil = 0;
 });
-// 突破成功 → 金光 + 庆祝
+// 突破成功 → 突破庆祝动作（fallback 到 promoted）+ 金光
 listen("realm-up", (event) => {
   endHoldAction();
-  triggerOneShot("promoted");
+  triggerOneShot("breakthrough");
   if (cultRealmEl) {
     cultRealmEl.classList.remove("up");
     void cultRealmEl.offsetWidth;
     cultRealmEl.classList.add("up");
   }
 });
-// 走火入魔 → 颤抖
+// 走火入魔 → 偏差动作（魔气缠身）+ 面板颤抖
 listen("cult-deviation", () => {
+  endHoldAction();
+  triggerOneShot("deviation");
   if (cultPanel) {
     cultPanel.classList.remove("deviation");
     void cultPanel.offsetWidth;
@@ -1968,7 +2074,7 @@ listen("cult-deviation", () => {
 // 续命丹救命 → poke 反应（缓过一口气）
 listen("life-saved", () => {
   endHoldAction();
-  triggerOneShot("poke");
+  triggerOneShot(pokeAction());
 });
 // 飞升结局 → 桌宠本体发光上升淡出 + 通关字幕
 listen("cult-ascension", () => {

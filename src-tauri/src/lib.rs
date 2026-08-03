@@ -157,6 +157,7 @@ struct ShopData {
     realm_name: String,
     exp: f32,
     savings: f32,
+    stamina: f32,
     qi_pill: i64,
     life_pill: i64,
     spirit_talisman: i64,
@@ -178,10 +179,11 @@ struct ShopData {
 /// 获取商店数据（商店窗口启动时拉取）。
 #[tauri::command]
 fn get_shop_data(state: tauri::State<'_, AppState>) -> ShopData {
-    let (savings, ev) = {
+    let (savings, stamina, ev) = {
         let pet = state.state.lock().unwrap();
         let ev = state.save.lock().map(|s| s.load_events()).unwrap_or_default();
-        (pet.to_cultivation_payload(&ev).savings, ev)
+        let payload = pet.to_cultivation_payload(&ev);
+        (payload.savings, payload.stamina, ev)
     };
     ShopData {
         cultivation_mode: ev.cultivation_mode,
@@ -190,6 +192,7 @@ fn get_shop_data(state: tauri::State<'_, AppState>) -> ShopData {
         realm_name: realm_name(ev.cultivation_realm).to_string(),
         exp: ev.cultivation_exp,
         savings,
+        stamina,
         qi_pill: ev.item_qi_pill,
         life_pill: ev.item_life_pill,
         spirit_talisman: ev.item_spirit_talisman,
@@ -347,6 +350,22 @@ fn claim_daily_reward(
     }
     push_stats_and_cult(&app, &state);
     Ok(())
+}
+
+/// 读取日常任务状态（JSON 字符串，存 settings 表）。
+#[tauri::command]
+fn get_daily_tasks(state: tauri::State<'_, AppState>) -> Option<String> {
+    state.save.lock().ok().and_then(|s| s.get_setting("daily_tasks"))
+}
+
+/// 保存日常任务状态（JSON 字符串）。
+#[tauri::command]
+fn save_daily_tasks(state: tauri::State<'_, AppState>, data: String) -> Result<(), String> {
+    state
+        .save
+        .lock()
+        .map_err(|e| e.to_string())
+        .and_then(|s| s.set_setting("daily_tasks", &data).map_err(|e| e.to_string()))
 }
 
 /// 切换修仙模式（商店"开启修仙"/"切回普通"按钮）。
@@ -1310,13 +1329,13 @@ pub fn run() {
                             let mut ev = save.load_events();
                             ev.cultivation_mode = true;
                             if ev.cultivation_realm == 0 { ev.cultivation_realm = 1; }
-                            // 给库存
+                            // 标记为已习得（永久解锁，>0 即拥有）
                             match spell {
-                                "fireball" => ev.spell_fireball = ev.spell_fireball.max(5),
-                                "ice" => ev.spell_ice = ev.spell_ice.max(5),
-                                "thunder" => ev.spell_thunder = ev.spell_thunder.max(5),
-                                "swords" => ev.spell_swords = ev.spell_swords.max(5),
-                                "armageddon" => ev.spell_armageddon = ev.spell_armageddon.max(5),
+                                "fireball" => ev.spell_fireball = 1,
+                                "ice" => ev.spell_ice = 1,
+                                "thunder" => ev.spell_thunder = 1,
+                                "swords" => ev.spell_swords = 1,
+                                "armageddon" => ev.spell_armageddon = 1,
                                 _ => {}
                             }
                             let _ = save.save_events(&ev);
@@ -1356,6 +1375,8 @@ pub fn run() {
             cast_spell,
             complete_realm_task,
             claim_daily_reward,
+            get_daily_tasks,
+            save_daily_tasks,
             skin::list_skins,
             skin::read_skin_frame,
             skin::read_skin_asset,

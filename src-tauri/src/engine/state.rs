@@ -22,6 +22,17 @@ pub struct StatsPayload {
     pub mood: f32,         // 0-100
     pub hourly_wage: f32,  // 浮动
     pub savings: f32,      // 累积
+    pub status: Status,    // 当前特殊状态（正常/度假/离职/住院）
+}
+
+/// 桌宠的特殊状态（影响数值是否推进）。
+/// 前端据此显示状态横幅，让用户知道"为什么数值不动"。
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub enum Status {
+    Normal,     // 正常打工
+    Vacation,   // 度假中（数值冻结）
+    OnLeave,    // 离职期（数值冻结）
+    Hospital,   // 住院中（数值冻结）
 }
 
 /// 修仙面板载荷（修仙模式下放开的红线：境界/修为/灵石全可见）。
@@ -32,6 +43,7 @@ pub struct CultivationPayload {
     pub realm: i64,             // 0-6
     pub exp: f32,               // 0-100
     pub savings: f32,           // 灵石=存款（共用）
+    pub stamina: f32,           // 体力 0-100
     pub qi_pill: i64,
     pub life_pill: i64,
     pub spirit_talisman: i64,
@@ -84,6 +96,13 @@ const SPELL_INFO: [(&str, i64); 5] = [
     ("swords", 3000),      // 万剑诀
     ("armageddon", 8000),  // 天地同寿
 ];
+
+/// 法术施展：体力消耗（按阶位递增）
+const SPELL_STAMINA_COST: [f32; 5] = [10.0, 15.0, 20.0, 30.0, 45.0];
+/// 法术施展：修为收益（按阶位递增）
+const SPELL_GAIN_EXP: [f32; 5] = [5.0, 8.0, 12.0, 18.0, 25.0];
+/// 法术施展：时薪收益（按阶位递增）—— 施法如工作，越强收获越大
+const SPELL_GAIN_WAGE: [f32; 5] = [3.0, 5.0, 8.0, 12.0, 18.0];
 
 pub fn realm_name(realm: i64) -> &'static str {
     REALM_NAMES.get(realm as usize).copied().unwrap_or("？？？")
@@ -146,6 +165,15 @@ pub fn spell_price(spell: &str) -> i64 {
         .unwrap_or(99999)
 }
 
+/// 法术在表中的索引（0-4），找不到返回 -1
+fn spell_index(spell: &str) -> isize {
+    SPELL_INFO
+        .iter()
+        .position(|(k, _)| *k == spell)
+        .map(|i| i as isize)
+        .unwrap_or(-1)
+}
+
 /// 从 item 字符串提取 mount_id（"mount_sword" → 1）
 fn mount_id_from_item(item: &str) -> i64 {
     match item {
@@ -192,6 +220,8 @@ pub struct PetState {
     hospital_until: Option<Instant>,
     /// 连续挂机时长（秒），用于 Boss来了检测
     idle_seconds_accum: f32,
+    /// 当前特殊状态（apply_sample 里更新，to_stats_payload 里读取）
+    current_status: Status,
 }
 
 /// 事件结果——apply_sample 可能产生的事件，由调用方 emit 给前端。
@@ -232,6 +262,7 @@ impl PetState {
             focus_seconds: 0.0,
             hospital_until: None,
             idle_seconds_accum: 0.0,
+            current_status: Status::Normal,
         }
     }
 
@@ -246,6 +277,7 @@ impl PetState {
             focus_seconds: 0.0,
             hospital_until: None,
             idle_seconds_accum: 0.0,
+            current_status: Status::Normal,
         }
     }
 
@@ -266,6 +298,7 @@ impl PetState {
             mood: self.mood,
             hourly_wage: self.hourly_wage,
             savings: self.savings,
+            status: self.current_status,
         }
     }
 
@@ -299,9 +332,24 @@ impl PetState {
         self.last_tick = now;
         let mut events = Vec::new();
 
-        // ===== 度假中检查（最高优先级，期间什么都不做）=====
+        // ===== 更新当前特殊状态（供前端显示状态横幅）=====
+        self.current_status = if ev.vacation_until > 0 {
+            Status::Vacation
+        } else if ev.leave_until > 0 {
+            Status::OnLeave
+        } else if self.hospital_until.is_some() {
+            Status::Hospital
+        } else {
+            Status::Normal
+        };
+
+        // ===== 度假中检查（仅普通模式冻结数值；修仙模式照常推进）=====
         if ev.vacation_until > 0 && (now_secs as i64) < ev.vacation_until {
-            return events; // 还在度假
+            if !ev.cultivation_mode {
+                return events; // 普通模式还在度假，冻结
+            }
+            // 修仙模式：清除残留的度假状态（化凡时可能带入），不冻结
+            ev.vacation_until = 0;
         }
         if ev.vacation_until > 0 && (now_secs as i64) >= ev.vacation_until {
             // 度假结束
@@ -310,7 +358,7 @@ impl PetState {
             events.push(TickEvent::VacationEnd);
         }
 
-        // ===== 离职回归检查 =====
+        // ===== 离职回归检查（仅普通模式冻结；修仙模式照常推进）=====
         if ev.leave_until > 0 && (now_secs as i64) >= ev.leave_until {
             ev.leave_until = 0;
             ev.pet_variant += 1; // 形态微变（领带色变等）
@@ -319,10 +367,13 @@ impl PetState {
             events.push(TickEvent::ReturnFromLeave);
         }
         if ev.leave_until > 0 {
-            return events; // 还在离职期，不推进
+            if !ev.cultivation_mode {
+                return events; // 普通模式还在离职期，冻结
+            }
+            ev.leave_until = 0; // 修仙模式清除残留离职状态
         }
 
-        // ===== 医院检查 =====
+        // ===== 医院检查（修仙模式不会进医院，走火入魔由过劳检查处理）=====
         if let Some(until) = self.hospital_until {
             if now < until {
                 return events;
@@ -347,7 +398,7 @@ impl PetState {
         let is_idling = sample.idle_seconds >= 30;
 
         if is_working {
-            self.stamina -= (keys_per_sec * 0.15) * dt;
+            self.stamina -= (keys_per_sec * 0.35) * dt;
             // 时薪：朝当前打字强度趋近（非单调累加）。
             // 打字快→时薪上升趋近峰值，摸鱼→下个分支回落。
             // 用 lerp 让时薪平滑跟随，避免无限上涨到离谱的数值。
@@ -368,13 +419,16 @@ impl PetState {
         } else if is_idling {
             self.stamina += 1.5 * dt;
             self.mood += 1.2 * dt;
-            self.focus_seconds = 0.0;
+            // 挂机不清零专注，而是缓慢衰减（休息一下不会前功尽弃）
+            self.focus_seconds = (self.focus_seconds - dt * 2.0).max(0.0);
             // 摸鱼→时薪回落（朝基线 35 趋近）
             self.hourly_wage += (35.0 - self.hourly_wage) * 0.05 * dt;
             self.idle_seconds_accum += dt; // 累计挂机时长
         } else {
             self.stamina += 0.5 * dt;
             self.mood += 0.4 * dt;
+            // 不忙不闲→专注缓慢衰减
+            self.focus_seconds = (self.focus_seconds - dt * 1.0).max(0.0);
             // 不忙不闲→时薪缓慢回落
             self.hourly_wage += (35.0 - self.hourly_wage) * 0.03 * dt;
             self.idle_seconds_accum += dt;
@@ -403,7 +457,8 @@ impl PetState {
         }
 
         // ===== 番茄钟检查 =====
-        const FOCUS_THRESHOLD: f32 = 1500.0; // 25 分钟
+        // 5 分钟持续专注即触发（原 25 分钟太难达成）
+        const FOCUS_THRESHOLD: f32 = 300.0;
         if self.focus_seconds >= FOCUS_THRESHOLD {
             self.focus_seconds = 0.0;
             self.savings += 200.0; // 项目交付奖金
@@ -473,26 +528,29 @@ impl PetState {
             events.push(TickEvent::Promoted);
         }
 
-        // 度假：存款>=3000（升职后继续攒够）
-        if self.savings >= 3000.0 && ev.vacation_until == 0 && ev.has_promoted {
+        // 度假：存款>=3000（升职后继续攒够）—— 仅普通模式，修仙者不度假
+        if !ev.cultivation_mode && self.savings >= 3000.0 && ev.vacation_until == 0 && ev.has_promoted {
             ev.vacation_until = (now_secs as i64) + 3 * 86400; // 3天后
             self.savings -= 1500.0; // 度假花钱
             events.push(TickEvent::VacationStart);
         }
 
-        // 离职：每天检查心情，连续3天=0则离职
-        if ev.last_mood_day != today {
-            ev.last_mood_day = today.clone();
-            if self.mood <= 0.0 {
-                ev.mood_zero_days += 1;
-            } else {
-                ev.mood_zero_days = 0;
+        // 离职：每天检查心情，连续3天=0则离职 —— 仅普通模式
+        // 修仙模式心情归零不离职，走火入魔由过劳检查处理
+        if !ev.cultivation_mode {
+            if ev.last_mood_day != today {
+                ev.last_mood_day = today.clone();
+                if self.mood <= 0.0 {
+                    ev.mood_zero_days += 1;
+                } else {
+                    ev.mood_zero_days = 0;
+                }
             }
-        }
-        if ev.mood_zero_days >= 3 && ev.leave_until == 0 {
-            ev.leave_until = (now_secs as i64) + 3 * 86400; // 3天后回归
-            ev.mood_zero_days = 0;
-            events.push(TickEvent::Leave);
+            if ev.mood_zero_days >= 3 && ev.leave_until == 0 {
+                ev.leave_until = (now_secs as i64) + 3 * 86400; // 3天后回归
+                ev.mood_zero_days = 0;
+                events.push(TickEvent::Leave);
+            }
         }
 
         events
@@ -538,6 +596,7 @@ impl PetState {
             realm: ev.cultivation_realm,
             exp: ev.cultivation_exp,
             savings: self.savings,
+            stamina: self.stamina,
             qi_pill: ev.item_qi_pill,
             life_pill: ev.item_life_pill,
             spirit_talisman: ev.item_spirit_talisman,
@@ -631,6 +690,21 @@ impl PetState {
                     return Err("本境界心魔丹已用完（上限3个）".into());
                 }
             }
+            // 法术：永久解锁，已习得则不可重复购买
+            s @ ("spell_fireball" | "spell_ice" | "spell_thunder" | "spell_swords" | "spell_armageddon") => {
+                let key = s.trim_start_matches("spell_");
+                let already = match key {
+                    "fireball" => ev.spell_fireball > 0,
+                    "ice" => ev.spell_ice > 0,
+                    "thunder" => ev.spell_thunder > 0,
+                    "swords" => ev.spell_swords > 0,
+                    "armageddon" => ev.spell_armageddon > 0,
+                    _ => false,
+                };
+                if already {
+                    return Err("已习得此法术".into());
+                }
+            }
             _ => {}
         }
         if (self.savings as i64) < price {
@@ -659,12 +733,12 @@ impl PetState {
             "mount_dragon" => { ev.owned_mount_dragon = true; ev.equipped_mount = 3; events.push(CultEvent::MountEquipped(3)); }
             "mount_qilin" => { ev.owned_mount_qilin = true; ev.equipped_mount = 4; events.push(CultEvent::MountEquipped(4)); }
             "mount_phoenix" => { ev.owned_mount_phoenix = true; ev.equipped_mount = 5; events.push(CultEvent::MountEquipped(5)); }
-            // 法术：库存+1
-            "spell_fireball" => { ev.spell_fireball += 1; }
-            "spell_ice" => { ev.spell_ice += 1; }
-            "spell_thunder" => { ev.spell_thunder += 1; }
-            "spell_swords" => { ev.spell_swords += 1; }
-            "spell_armageddon" => { ev.spell_armageddon += 1; }
+            // 法术：永久习得（>0 表示已拥有，设为 1）
+            "spell_fireball" => { ev.spell_fireball = 1; }
+            "spell_ice" => { ev.spell_ice = 1; }
+            "spell_thunder" => { ev.spell_thunder = 1; }
+            "spell_swords" => { ev.spell_swords = 1; }
+            "spell_armageddon" => { ev.spell_armageddon = 1; }
             // 心魔丹：增加突破成功率+5%，计数+1
             "heart_devil_pill" => { ev.heart_devil_pills_used += 1; }
             _ => {}
@@ -692,7 +766,8 @@ impl PetState {
         Ok(vec![CultEvent::MountEquipped(mount_id)])
     }
 
-    /// 施展法术（消耗一个库存，返回 SpellCast 事件触发特效）。
+    /// 施展法术（永久持有，消耗体力，获得修为/时薪，触发特效）。
+    /// 法术字段 >0 表示已习得（永久解锁）。施法不再消耗库存。
     pub fn cast_spell(
         &mut self,
         ev: &mut save::EventState,
@@ -701,29 +776,36 @@ impl PetState {
         if !ev.cultivation_mode {
             return Err("需先开启修仙模式".into());
         }
-        match spell {
-            "fireball" => {
-                if ev.spell_fireball <= 0 { return Err("没有火球术".into()); }
-                ev.spell_fireball -= 1;
-            }
-            "ice" => {
-                if ev.spell_ice <= 0 { return Err("没有冰封术".into()); }
-                ev.spell_ice -= 1;
-            }
-            "thunder" => {
-                if ev.spell_thunder <= 0 { return Err("没有雷劫术".into()); }
-                ev.spell_thunder -= 1;
-            }
-            "swords" => {
-                if ev.spell_swords <= 0 { return Err("没有万剑诀".into()); }
-                ev.spell_swords -= 1;
-            }
-            "armageddon" => {
-                if ev.spell_armageddon <= 0 { return Err("没有天地同寿".into()); }
-                ev.spell_armageddon -= 1;
-            }
-            _ => return Err("未知法术".into()),
+        let idx = spell_index(spell);
+        if idx < 0 {
+            return Err("未知法术".into());
         }
+        let i = idx as usize;
+        // 校验是否已习得
+        let owned = match spell {
+            "fireball" => ev.spell_fireball > 0,
+            "ice" => ev.spell_ice > 0,
+            "thunder" => ev.spell_thunder > 0,
+            "swords" => ev.spell_swords > 0,
+            "armageddon" => ev.spell_armageddon > 0,
+            _ => false,
+        };
+        if !owned {
+            return Err(format!("尚未习得{}", spell_name(spell)));
+        }
+        // 校验体力
+        let cost = SPELL_STAMINA_COST[i];
+        if self.stamina < cost {
+            return Err(format!("体力不足，{}需要{:.0}体力", spell_name(spell), cost));
+        }
+        // 执行：消耗体力 + 获得修为/时薪（施法如工作）
+        self.stamina -= cost;
+        let gain_exp = SPELL_GAIN_EXP[i];
+        let gain_wage = SPELL_GAIN_WAGE[i];
+        if ev.cultivation_realm < 6 {
+            ev.cultivation_exp = (ev.cultivation_exp + gain_exp).min(100.0);
+        }
+        self.hourly_wage = (self.hourly_wage + gain_wage).min(200.0);
         Ok(vec![CultEvent::SpellCast { spell: spell.to_string() }])
     }
 
