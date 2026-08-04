@@ -181,7 +181,7 @@ Privacy: 无影响
 
 ## 当前进度
 
-项目处于 **🚧 v0.1.0 开发中**。已完成：
+项目处于 **📦 v0.1.0 已发布（Windows）**。已完成：
 
 - ✅ Tauri 2 + Rust 三层架构（sensing/engine/rendering_bridge）
 - ✅ 行为感知 MVP（键盘频率 + 空闲检测 + 鼠标活动）
