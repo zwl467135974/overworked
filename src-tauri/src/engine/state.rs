@@ -23,6 +23,7 @@ pub struct StatsPayload {
     pub hourly_wage: f32,  // 浮动
     pub savings: f32,      // 累积
     pub status: Status,    // 当前特殊状态（正常/度假/离职/住院）
+    pub pet_variant: i64,  // 过劳变异次数（0=正常，越高越沧桑）
 }
 
 /// 桌宠的特殊状态（影响数值是否推进）。
@@ -244,6 +245,8 @@ pub struct PetState {
     idle_seconds_accum: f32,
     /// 当前特殊状态（apply_sample 里更新，to_stats_payload 里读取）
     current_status: Status,
+    /// 过劳变异次数镜像（从 ev.pet_variant 同步）
+    current_variant: i64,
 }
 
 /// 事件结果——apply_sample 可能产生的事件，由调用方 emit 给前端。
@@ -285,6 +288,7 @@ impl PetState {
             hospital_until: None,
             idle_seconds_accum: 0.0,
             current_status: Status::Normal,
+            current_variant: 0,
         }
     }
 
@@ -300,6 +304,7 @@ impl PetState {
             hospital_until: None,
             idle_seconds_accum: 0.0,
             current_status: Status::Normal,
+            current_variant: 0,
         }
     }
 
@@ -321,6 +326,7 @@ impl PetState {
             hourly_wage: self.hourly_wage,
             savings: self.savings,
             status: self.current_status,
+            pet_variant: self.current_variant,
         }
     }
 
@@ -354,7 +360,8 @@ impl PetState {
         self.last_tick = now;
         let mut events = Vec::new();
 
-        // ===== 更新当前特殊状态（供前端显示状态横幅）=====
+        // ===== 更新当前特殊状态 + 变异次数镜像（供前端渲染）=====
+        self.current_variant = ev.pet_variant;
         self.current_status = if ev.vacation_until > 0 {
             Status::Vacation
         } else if ev.leave_until > 0 {
@@ -520,10 +527,12 @@ impl PetState {
                 self.stamina = 30.0;
                 self.mood = (self.mood - 20.0).max(0.0);
                 ev.cultivation_exp = (ev.cultivation_exp - exp_loss).max(0.0);
+                ev.pet_variant += 1; // 过劳变异+1（走火入魔伤身）
                 events.push(TickEvent::CultDeviation);
             } else {
                 // 普通模式 → 进医院
                 self.hospital_until = Some(now + Duration::from_secs(300));
+                ev.pet_variant += 1; // 过劳变异+1（进医院伤身）
                 events.push(TickEvent::HospitalAdmit);
             }
         }
@@ -926,6 +935,8 @@ impl PetState {
             ev.heart_devil_pills_used = 0;
             ev.realm_task_done = false;
             ev.inner_demon = 0.0; // 升境界后心魔清零
+            // 突破成功恢复部分变异（修仙疗伤，但不能完全恢复）
+            ev.pet_variant = ev.pet_variant.saturating_sub(1);
             if ev.cultivation_realm >= 6 {
                 events.push(CultEvent::Ascension);
             } else {

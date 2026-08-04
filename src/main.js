@@ -1157,6 +1157,41 @@ function drawPhoenixWing(x, y, dir, flap) {
 // 调用时 ctx 已 translate 到桌宠中心（原点），绘制坐标以原点为参考。
 // now 用于动画（金丹旋转/光环呼吸）。
 // 注意：这里手动叠加光效，不依赖 ctx.filter（filter 已被表情层占用）。
+/**
+ * 过劳变异叠加（pet_variant 越高越沧桑）
+ * variant 1+：黑眼圈（眼下深色）
+ * variant 3+：灰暗滤镜（saturate 降低）
+ * variant 5+：脸上裂纹（程序绘制）
+ * variant 8+：全灰（黑白默片效果）
+ */
+function drawVariant(now) {
+  if (petVariant < 1) return;
+  const t = now / 1000;
+  // 黑眼圈（variant 1+）：眼下深色半圆
+  if (petVariant >= 1) {
+    ctx.fillStyle = `rgba(40, 30, 50, ${Math.min(0.5, petVariant * 0.1)})`;
+    ctx.beginPath(); ctx.ellipse(-5, -4, 3, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(5, -4, 3, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  // 脸上裂纹（variant 5+）：从眼角延伸的细线
+  if (petVariant >= 5) {
+    ctx.strokeStyle = `rgba(60, 40, 50, 0.5)`;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-8, -2); ctx.lineTo(-4, 2); ctx.lineTo(-6, 6);
+    ctx.moveTo(8, -2); ctx.lineTo(5, 3); ctx.lineTo(7, 7);
+    ctx.stroke();
+  }
+  // 灰暗光晕（variant 3+）：整体笼罩暗色雾气
+  if (petVariant >= 3) {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = `rgba(40, 35, 45, ${Math.min(0.25, (petVariant - 2) * 0.04)})`;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 22, 30, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function drawRealmAura(now) {
   if (!cultMode || cultRealm < 1) return;
   const t = now / 1000; // 秒
@@ -1467,6 +1502,8 @@ function render(now) {
     ctx.drawImage(imgToDraw, -dw / 2, -dh / 2 + mountLift, dw, dh);
     // 修仙境界光环（叠加在本体上，跟随变换）
     drawRealmAura(now);
+    // 过劳变异叠加（黑眼圈+灰暗+裂纹，越沧桑越明显）
+    drawVariant(now);
     ctx.restore();
   } else {
     // 帧未加载完，画占位
@@ -1956,6 +1993,9 @@ listen("stats-update", (event) => {
   targetMood = Math.max(0, Math.min(100, s.mood));
   if (numWage) numWage.textContent = s.hourly_wage.toFixed(0);
 
+  // 过劳变异次数（供渲染叠加沧桑效果）
+  petVariant = s.pet_variant || 0;
+
   // 特殊状态横幅（度假/离职/住院 → 数值暂停提示）
   const banner = document.getElementById("status-banner");
   if (banner) {
@@ -2034,6 +2074,7 @@ let cultMode = false;
 let cultRealm = 0; // 当前境界 0-6（render 循环读取，画光环/金丹等）
 let currentMount = 0; // 当前装备坐骑 0=无, 1-5
 let cultDemon = 0; // 心魔值 0-100
+let petVariant = 0; // 过劳变异次数（越高越沧桑）
 const REALM_NAMES = ["凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升"];
 
 // 坐骑装备/卸下事件
