@@ -501,6 +501,21 @@ body {
 .ach-name { font-weight: bold; color: #e8dcc0; }
 .ach-card.locked .ach-name { color: #6a6050; }
 .ach-desc { font-size: 9px; color: #8a7450; margin-left: auto; }
+/* 今日简报 */
+.daily-report {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  font-size: 10px;
+}
+.report-cell {
+  padding: 4px 6px;
+  background: rgba(40, 30, 20, 0.4);
+  border: 1px solid #3a3020;
+  border-radius: 3px;
+}
+.report-label { color: #8a7450; font-size: 9px; }
+.report-value { color: #e8dcc0; font-weight: bold; }
 
 .btn-quest {
   padding: 4px 14px;

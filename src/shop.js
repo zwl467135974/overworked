@@ -220,6 +220,7 @@ async function refresh() {
     }
     render(data);
     renderAchievements(data);
+    renderDailyReport();
     // 检查成就触发（异步，不阻塞渲染）
     checkAchievements(data);
     // 移除加载提示
@@ -335,6 +336,27 @@ function renderAchievements(data) {
     `;
     container.appendChild(card);
   }
+}
+
+// ===== 今日简报 =====
+const REALM_SHORT = ["凡人", "练气", "筑基", "金丹", "元婴", "化神", "飞升"];
+async function renderDailyReport() {
+  const container = document.getElementById("daily-report");
+  if (!container) return;
+  try {
+    const raw = await invoke("get_daily_report");
+    const r = JSON.parse(raw);
+    const workM = Math.floor(r.today_work / 60);
+    const idleM = Math.floor(r.today_idle / 60);
+    container.innerHTML = `
+      <div class="report-cell"><div class="report-label">今日按键</div><div class="report-value">${r.today_keys}</div></div>
+      <div class="report-cell"><div class="report-label">今日打工</div><div class="report-value">${workM}分钟</div></div>
+      <div class="report-cell"><div class="report-label">今日摸鱼</div><div class="report-value">${idleM}分钟</div></div>
+      <div class="report-cell"><div class="report-label">连续天数</div><div class="report-value">${r.streak}天</div></div>
+      <div class="report-cell"><div class="report-label">当前境界</div><div class="report-value">${REALM_SHORT[r.realm] || "凡人"}</div></div>
+      <div class="report-cell"><div class="report-label">心魔 / 体力</div><div class="report-value">${r.demon} / ${Math.floor(r.stamina)}</div></div>
+    `;
+  } catch (e) { console.warn("daily report", e); }
 }
 
 // ===== 事件绑定 =====

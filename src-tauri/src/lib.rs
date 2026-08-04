@@ -513,6 +513,64 @@ fn get_work_report(state: tauri::State<'_, AppState>) -> String {
     )
 }
 
+/// 今日报告：返回 JSON {date, today_keys, today_work, today_idle, total_keys, streak, realm, inner_demon}
+/// 用 daily_snapshot（settings 表）记录上次快照，差值 = 今日数据。
+#[tauri::command]
+fn get_daily_report(state: tauri::State<'_, AppState>) -> String {
+    let save = match state.save.lock() {
+        Ok(s) => s,
+        Err(_) => return "{}".to_string(),
+    };
+    let stats = save.load_stats();
+    let ev = save.load_events();
+    let pet = state.state.lock();
+    let today = today_str_from_secs(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+    );
+    // 读昨日快照
+    let snapshot: (String, i64, i64, i64) = save
+        .get_setting("daily_snapshot")
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| {
+            Some((
+                v.get("date")?.as_str()?.to_string(),
+                v.get("keys")?.as_i64()?,
+                v.get("work")?.as_i64()?,
+                v.get("idle")?.as_i64()?,
+            ))
+        })
+        .unwrap_or_default();
+    // 如果日期变了或没有快照，更新快照为当前累计值（今日数据归零）
+    let (today_keys, today_work, today_idle) = if snapshot.0 != today {
+        let _ = save.set_setting(
+            "daily_snapshot",
+            &format!(
+                r#"{{"date":"{}","keys":{},"work":{},"idle":{}}}"#,
+                today, stats.total_keys, stats.total_work_seconds, stats.total_idle_seconds
+            ),
+        );
+        (0, 0, 0)
+    } else {
+        (
+            stats.total_keys - snapshot.1,
+            stats.total_work_seconds - snapshot.2,
+            stats.total_idle_seconds - snapshot.3,
+        )
+    };
+    let (stamina, realm, demon) = match pet {
+        Ok(p) => (p.to_stats_payload().stamina, ev.cultivation_realm, ev.inner_demon),
+        Err(_) => (0.0, 0, 0.0),
+    };
+    format!(
+        r#"{{"date":"{}","today_keys":{},"today_work":{},"today_idle":{},"total_keys":{},"streak":{},"realm":{},"demon":{:.0},"stamina":{:.0}}}"#,
+        today, today_keys, today_work, today_idle, stats.total_keys,
+        stats.streak_days, realm, demon, stamina
+    )
+}
+
 /// 存当前窗口位置（前端拖动结束时调用）。
 #[tauri::command]
 fn save_window_pos(window: tauri::WebviewWindow, state: tauri::State<'_, AppState>) -> Result<(), String> {
@@ -588,6 +646,7 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
         skin_submenu = skin_submenu.item(&item);
     }
     let skins_item = skin_submenu.build()?;
+    let open_skins = MenuItem::with_id(app, "open-skins", "📂 打开皮肤目录", true, None::<&str>)?;
 
     // 用户菜单基础项
     let mut builder = MenuBuilder::new(app)
@@ -599,7 +658,8 @@ fn state_menu(app: &tauri::AppHandle, debug: bool) -> tauri::Result<tauri::menu:
         .item(&report)
         .item(&fx_toggle)
         .item(&sep)
-        .item(&skins_item);
+        .item(&skins_item)
+        .item(&open_skins);
 
     // 调试菜单（仅 debug 模式，Shift+右键 触发）
     if debug {
@@ -1153,6 +1213,20 @@ pub fn run() {
                         }).unwrap_or_else(|_| "打工日报读取失败".to_string());
                         let _ = app_handle.emit("bubble-show", text);
                     }
+                    "open-skins" => {
+                        // 打开皮肤目录（用户可放入自定义皮肤）
+                        let app_h = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            // 优先 app_local_data/skins（用户可写），不存在则打开 resource/skins
+                            let path = app_h.path().app_local_data_dir().ok()
+                                .map(|d| d.join("skins"))
+                                .filter(|p| p.is_dir())
+                                .or_else(|| skin::skins_dir(&app_h));
+                            if let Some(p) = path {
+                                let _ = tauri_plugin_opener::open_path(p.to_string_lossy().to_string(), None::<&str>);
+                            }
+                        });
+                    }
                     "about" => {
                         let _ = app_handle.emit(
                             "bubble-show",
@@ -1383,6 +1457,7 @@ pub fn run() {
             hide_for_one_hour,
             save_window_pos,
             get_work_report,
+            get_daily_report,
             toggle_fx,
             feed_coffee,
             reset_position,

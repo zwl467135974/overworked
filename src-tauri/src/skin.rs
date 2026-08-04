@@ -95,7 +95,7 @@ pub const SPELL_KEYS: &[&str] = &["fireball", "ice", "thunder", "swords", "armag
 /// 获取 skins 目录的绝对路径。
 /// dev：项目根/skins（cwd 可能是 src-tauri，需向上找）
 /// prod：打包后的 resource 目录/skins
-fn skins_dir(app: &AppHandle) -> Option<PathBuf> {
+pub fn skins_dir(app: &AppHandle) -> Option<PathBuf> {
     // prod 优先：打包资源目录
     if let Ok(resource_dir) = app.path().resource_dir() {
         let p = resource_dir.join("skins");
