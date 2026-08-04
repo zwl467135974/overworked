@@ -211,11 +211,17 @@ async function refresh() {
     // 用模块级快照 lastStones/lastExp 对比新数据，累计任务进度
     trackDeltaTasks(data);
     window._lastShopData = data;
-    // 首次刷新时从后端加载日常任务
+    // 首次刷新时从后端加载日常任务 + 成就
     if (dailyTaskState.length === 0 && !dailyTaskDate) {
       await loadDailyTasks(data.realm);
     }
+    if (Object.keys(achievementState).length === 0) {
+      await loadAchievements();
+    }
     render(data);
+    renderAchievements(data);
+    // 检查成就触发（异步，不阻塞渲染）
+    checkAchievements(data);
     // 移除加载提示
     const loading = document.getElementById("loading");
     if (loading) loading.remove();
@@ -268,6 +274,67 @@ async function toggleMode() {
     showToast(String(e), "error");
   }
   await refresh();
+}
+
+// ===== 成就系统 =====
+const ACHIEVEMENTS = [
+  { id: "first_cult",    icon: "🌟", name: "踏入仙途",   desc: "开启修仙模式",         reward: 0,   check: d => d.ever_cultivated },
+  { id: "realm_2",       icon: "🔥", name: "筑基成功",   desc: "突破到筑基",           reward: 200, check: d => d.realm >= 2 },
+  { id: "realm_3",       icon: "💊", name: "金丹大道",   desc: "凝成金丹",             reward: 500, check: d => d.realm >= 3 },
+  { id: "realm_4",       icon: "👶", name: "元婴出窍",   desc: "元婴成形",             reward: 800, check: d => d.realm >= 4 },
+  { id: "realm_5",       icon: "⚡", name: "化神渡劫",   desc: "扛过九雷",             reward: 1500, check: d => d.realm >= 5 },
+  { id: "ascend",        icon: "✨", name: "飞升成仙",   desc: "踏入仙界",             reward: 5000, check: d => d.realm >= 6 },
+  { id: "mount_1",       icon: "🦅", name: "御剑乘风",   desc: "装备任意坐骑",         reward: 100, check: d => d.equipped_mount > 0 },
+  { id: "mount_all",     icon: "🐲", name: "灵兽满圈",   desc: "集齐5种坐骑",          reward: 2000, check: d => d.owned_mounts?.every(v => v) },
+  { id: "spell_all",     icon: "📖", name: "万法归宗",   desc: "习得全部5种法术",      reward: 1000, check: d => d.spells?.every(v => v > 0) },
+  { id: "demon_pure",    icon: "🧊", name: "冰心通明",   desc: "心魔降至0",            reward: 300, check: d => d.inner_demon !== undefined && d.inner_demon < 1 },
+  { id: "overwork_5",    icon: "💀", name: "百死不悔",   desc: "过劳变异5次",          reward: 0,   check: d => d.pet_variant >= 5 },
+  { id: "savings_5000",  icon: "💰", name: "灵石满仓",   desc: "灵石达5000",           reward: 0,   check: d => d.savings >= 5000 },
+];
+let achievementState = {}; // { id: true }
+
+async function loadAchievements() {
+  try {
+    const json = await invoke("get_achievements");
+    if (json) achievementState = JSON.parse(json);
+  } catch (e) { console.warn("loadAchievements", e); }
+}
+
+async function checkAchievements(data) {
+  let changed = false;
+  for (const ach of ACHIEVEMENTS) {
+    if (achievementState[ach.id]) continue;
+    if (ach.check(data)) {
+      achievementState[ach.id] = true;
+      changed = true;
+      // 奖励
+      if (ach.reward > 0) {
+        try { await invoke("claim_daily_reward", { spiritStones: ach.reward, exp: 0 }); } catch (e) {}
+      }
+      showToast(`🏆 ${ach.name}！${ach.reward > 0 ? `+${ach.reward}灵石` : ""}`, "success");
+    }
+  }
+  if (changed) {
+    try { await invoke("save_achievements", { data: JSON.stringify(achievementState) }); } catch (e) {}
+    renderAchievements(data);
+  }
+}
+
+function renderAchievements(data) {
+  const container = document.getElementById("achievement-list");
+  if (!container) return;
+  container.innerHTML = "";
+  for (const ach of ACHIEVEMENTS) {
+    const unlocked = !!achievementState[ach.id];
+    const card = document.createElement("div");
+    card.className = `ach-card ${unlocked ? "unlocked" : "locked"}`;
+    card.innerHTML = `
+      <span class="ach-icon">${unlocked ? ach.icon : "🔒"}</span>
+      <span class="ach-name">${unlocked ? ach.name : "？？？"}</span>
+      <span class="ach-desc">${ach.desc}${ach.reward > 0 ? ` · ◈${ach.reward}` : ""}</span>
+    `;
+    container.appendChild(card);
+  }
 }
 
 // ===== 事件绑定 =====

@@ -371,6 +371,22 @@ fn save_daily_tasks(state: tauri::State<'_, AppState>, data: String) -> Result<(
         .and_then(|s| s.set_setting("daily_tasks", &data).map_err(|e| e.to_string()))
 }
 
+/// 读取成就状态（JSON 字符串）。
+#[tauri::command]
+fn get_achievements(state: tauri::State<'_, AppState>) -> Option<String> {
+    state.save.lock().ok().and_then(|s| s.get_setting("achievements"))
+}
+
+/// 保存成就状态（JSON 字符串）。
+#[tauri::command]
+fn save_achievements(state: tauri::State<'_, AppState>, data: String) -> Result<(), String> {
+    state
+        .save
+        .lock()
+        .map_err(|e| e.to_string())
+        .and_then(|s| s.set_setting("achievements", &data).map_err(|e| e.to_string()))
+}
+
 /// 切换修仙模式（商店"开启修仙"/"切回普通"按钮）。
 #[tauri::command]
 fn toggle_cultivation(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
@@ -1380,6 +1396,8 @@ pub fn run() {
             claim_daily_reward,
             get_daily_tasks,
             save_daily_tasks,
+            get_achievements,
+            save_achievements,
             skin::list_skins,
             skin::read_skin_frame,
             skin::read_skin_asset,

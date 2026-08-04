@@ -469,6 +469,38 @@ body {
 .demon-label { font-weight: bold; }
 .demon-effect { color: #a070c0; font-size: 9px; }
 .demon-display[hidden] { display: none; }
+/* 成就墙 */
+.achievement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ach-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  border: 1px solid #3a3020;
+  background: rgba(40, 30, 20, 0.4);
+  font-size: 11px;
+}
+.ach-card.unlocked {
+  border-color: #8a6a3a;
+  background: rgba(80, 60, 30, 0.3);
+}
+.ach-card.locked {
+  opacity: 0.4;
+}
+.ach-icon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+}
+.ach-card.unlocked .ach-icon { color: #ffd97a; }
+.ach-name { font-weight: bold; color: #e8dcc0; }
+.ach-card.locked .ach-name { color: #6a6050; }
+.ach-desc { font-size: 9px; color: #8a7450; margin-left: auto; }
 
 .btn-quest {
   padding: 4px 14px;
