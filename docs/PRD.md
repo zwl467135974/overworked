@@ -335,9 +335,12 @@ Overworked 后台感知你的行为模式
 - ✅ **皮肤导入**：右键菜单「打开皮肤目录」，用户自定义皮肤即放即用
 - ✅ 调试模式（Shift+右键）
 
-### Phase 5：深化（待做）
+### Phase 5：深化（待做 / 社区贡献）
 
-- ⬜ macOS 适配（idle 检测需 Mac 环境）
+- 🤝 **macOS 适配**（需 Mac 环境 + Apple Developer 账号）
+  - 代码框架已就绪：`sensing/mod.rs` 的 `cfg(target_os = "macos")` 切换 + `macos.rs` CGEventTap 骨架
+  - 社区贡献者需做：Mac 上编译验证、补充空闲检测（CoreGraphics）、处理辅助功能权限弹窗、透明窗口 macos-private-api、签名公证
+  - 隐私红线同 Windows：只记频率不记内容、不截屏、不上传
 - ⬜ 数值平衡调优（实机测试后微调）
 - ⬜ LLM 生成个性化吐槽（可选，需联网）
 
