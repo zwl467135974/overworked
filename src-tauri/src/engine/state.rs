@@ -847,11 +847,12 @@ impl PetState {
     }
 
     /// 完成境界任务（剧情模式）。tier: 1=完美(+8%) 2=普通(+5%) 3=勉强(+2%)
-    /// 同时给予灵石奖励。
+    /// 同时给予灵石奖励。demon_reduce: 剧情中"斩心魔"等选项累计降低的心魔值。
     pub fn complete_realm_task(
         &mut self,
         ev: &mut save::EventState,
         tier: i64,
+        demon_reduce: f32,
     ) -> Result<Vec<CultEvent>, String> {
         if !ev.cultivation_mode {
             return Err("需先开启修仙模式".into());
@@ -867,6 +868,10 @@ impl PetState {
         ev.task_bonus = bonus;
         ev.realm_task_done = true;
         self.savings += reward as f32;
+        // 剧情中斩心魔降低心魔
+        if demon_reduce > 0.0 {
+            ev.inner_demon = (ev.inner_demon - demon_reduce).max(0.0);
+        }
         Ok(vec![])
     }
 

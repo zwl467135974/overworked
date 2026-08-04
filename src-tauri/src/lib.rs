@@ -311,6 +311,7 @@ fn complete_realm_task(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     tier: i64,
+    demon_reduce: f32,
 ) -> Result<(), String> {
     {
         let mut pet = state.state.lock().map_err(|e| e.to_string())?;
@@ -319,7 +320,7 @@ fn complete_realm_task(
             .lock()
             .map(|s| s.load_events())
             .map_err(|e| e.to_string())?;
-        pet.complete_realm_task(&mut ev, tier)?;
+        pet.complete_realm_task(&mut ev, tier, demon_reduce)?;
         if let Ok(save) = state.save.lock() {
             let _ = save.save_events(&ev);
             let _ = save.save_state(pet.to_snapshot());

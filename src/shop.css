@@ -577,3 +577,12 @@ body {
   color: #ffd97a;
   transform: translateX(4px);
 }
+.btn-story-choice.secret-choice {
+  border-color: #6a4a8a;
+  color: #c0a0e0;
+  background: rgba(74, 42, 106, 0.3);
+}
+.btn-story-choice.secret-choice:hover {
+  background: rgba(106, 60, 140, 0.5);
+  border-color: #a070c0;
+}

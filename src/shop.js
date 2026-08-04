@@ -450,93 +450,156 @@ function renderTasks(data) {
   }
 }
 
-// ===== 境界剧情数据 =====
+// ===== 境界剧情数据（扩充版：分支+隐藏选项+心魔联动）=====
+// tier: 1=完美 2=普通 3=勉强（越小越好）
+// condition: 函数，返回false则该选项隐藏（用于隐藏选项）
+// demon: 正数表示该选项降低心魔值
+// secret: 标记为隐藏选项（紫色样式）
 const REALM_STORIES = {
   1: {
     name: "引气入体",
     scenes: [
       { text: "你盘膝而坐，感受天地间稀薄的灵气。远处传来一声叹息：「欲入修仙之门，先过心魔三问。」\n\n第一问：修仙为何？", choices: [
-        { text: "为求长生不老", next: 1, tier: 2 },
         { text: "为证大道，超脱凡俗", next: 1, tier: 1 },
-        { text: "不想打工了", next: 1, tier: 3 },
+        { text: "为求长生不老", next: 1, tier: 2 },
+        { text: "不想打工了……打工太累了", next: 1, tier: 3 },
+        { text: "「为护身边之人」——你想起屏幕角落那个陪你加班的小身影", next: 1, tier: 1, secret: true, demon: 10 },
       ]},
       { text: "第二问浮现于心：「若修炼途中，旧友凡人老去，你独活世间，当如何？」", choices: [
         { text: "大道无情，继续前行", next: 2, tier: 1 },
-        { text: "陪伴他们走完一生", next: 2, tier: 2 },
+        { text: "陪伴他们走完一生", next: 2, tier: 2, demon: 5 },
         { text: "从未有过朋友", next: 2, tier: 3 },
       ]},
-      { text: "第三问：「修仙路上九死一生，你可愿？」\n\n三问过后，一缕灵气涌入丹田……", choices: [
-        { text: "纵死无悔", finish: true, tier: 1 },
-        { text: "尽力而为", finish: true, tier: 2 },
-        { text: "能不能先想想", finish: true, tier: 3 },
+      { text: "第三问：「修仙路上九死一生，你可愿？」\n\n一道阴影从你心底浮起——那是你的心魔，它低语：「放弃吧，当个快乐的凡人不好吗？」", choices: [
+        { text: "纵死无悔，斩灭心魔", next: 3, tier: 1, demon: 15 },
+        { text: "尽力而为，驱散阴影", next: 3, tier: 2 },
+        { text: "被心魔动摇，犹豫不决", next: 3, tier: 3 },
+      ]},
+      { text: "三问过后，一缕灵气涌入丹田。你的身体开始排出杂质——打工积累的疲惫、加班的暗伤、颈椎的酸痛，统统化为黑烟散去。\n\n灵气在经脉中流淌，第一层瓶颈近在眼前……", choices: [
+        { text: "一鼓作气，冲破瓶颈", finish: true, tier: 1 },
+        { text: "循序渐进，缓缓冲关", finish: true, tier: 2 },
+        { text: "冲了半天才通", finish: true, tier: 3 },
       ]},
     ],
   },
   2: {
     name: "筑基大成",
     scenes: [
-      { text: "练气圆满，筑基之劫降临。一座幻阵出现在眼前，阵中是你的心魔——一个不断加班、永不停歇的自己。\n\n它说：「你就是个打工人，修什么仙？」", choices: [
-        { text: "挥剑斩心魔，意志坚定", next: 1, tier: 1 },
-        { text: "与心魔对话，化解执念", next: 1, tier: 2 },
-        { text: "被说动了，差点放弃", next: 1, tier: 3 },
+      { text: "练气圆满，筑基之劫降临。你的工位突然变成了幻阵——电脑屏幕变成一面镜子，镜中是一个不断加班、永不停歇的自己。\n\n心魔说：「我们本质一样。你就是个打工人，修什么仙？」", choices: [
+        { text: "「我是修仙者，不是打工人！」挥剑斩之", next: 1, tier: 1, demon: 20 },
+        { text: "「你说得对，但我不认命。」平静化解", next: 1, tier: 2, demon: 10 },
+        { text: "被说动了，差点放弃修仙", next: 1, tier: 3 },
       ]},
-      { text: "心魔消散，筑基的灵力如潮水般涌来。你需要引导这股力量……", choices: [
-        { text: "稳扎稳打，步步为营", finish: true, tier: 1 },
-        { text: "顺势而为", finish: true, tier: 2 },
-        { text: "差点失控", finish: true, tier: 3 },
+      { text: "心魔化作黑烟，但并未完全消散。它在空气中低语：「我会回来的……每次你过劳、每次你突破失败，我都会变强。」\n\n这是对你的警告——心魔会随修仙之路不断积累。", choices: [
+        { text: "「我已做好准备。」继续筑基", next: 2, tier: 1 },
+        { text: "心中隐隐不安，但别无选择", next: 2, tier: 2 },
+      ]},
+      { text: "筑基需要引导灵力构建根基。你的丹田如同一座未完工的大厦地基，灵力是砖石，意志是图纸。\n\n一份加班报告突然飞到面前，甲方改了第18版需求。心魔趁机低语：「先做完工作吧，修仙不急。」", choices: [
+        { text: "无视干扰，专注筑基", next: 3, tier: 1 },
+        { text: "先处理工作，再继续筑基", next: 4, tier: 2 },
+        { text: "被工作打断，筑基差点失败", next: 3, tier: 3 },
+      ]},
+      { text: "你选择了专注。灵力在意志引导下层层堆叠，筑基的根基越来越稳固。忽然，丹田中传来一声脆响——根基铸成！\n\n一道灵光冲天而起，周围的同事（如果有的话）都惊呆了。", choices: [
+        { text: "趁势巩固，完美筑基", finish: true, tier: 1 },
+        { text: "见好就收，稳固为主", finish: true, tier: 2 },
+      ]},
+      { text: "你先处理了工作，回来时灵力已经散乱。不得不重新聚气，从头开始筑基。\n\n心魔嘲笑道：「看吧，你终究是打工人。」", choices: [
+        { text: "咬牙重来，最终成功", finish: true, tier: 2 },
+        { text: "勉强筑基，根基不稳", finish: true, tier: 3 },
       ]},
     ],
   },
   3: {
     name: "金丹凝炼",
     scenes: [
-      { text: "筑基大成，该凝金丹了。丹田中灵力旋转，渐成漩涡。一位老者的虚影浮现：「金丹之道，在于一心。心若不专，丹不成形。」\n\n你选择如何凝丹？", choices: [
+      { text: "筑基大成，该凝金丹了。丹田中灵力旋转，渐成漩涡。一位老者的虚影浮现，竟是你们公司已经退休的创始元老。\n\n他说：「金丹之道，在于一心。心若不专，丹不成形。当年我创业时……算了不说这个。」", choices: [
         { text: "万念归一，专注凝丹", next: 1, tier: 1 },
         { text: "以身为炉，以心为火", next: 1, tier: 2 },
-        { text: "边修炼边摸鱼", next: 1, tier: 3 },
+        { text: "边凝丹边刷手机", next: 1, tier: 3 },
       ]},
-      { text: "金丹逐渐成形，金光大盛！最后一关——丹劫降临，一道天雷劈下！", choices: [
-        { text: "以金丹硬抗天劫", finish: true, tier: 1 },
-        { text: "借力化劫", finish: true, tier: 2 },
-        { text: "差点被劈碎", finish: true, tier: 3 },
+      { text: "金丹逐渐成形，你的意识沉入丹田。只见一颗金色的光球缓缓旋转，表面流转着符文。\n\n但金丹中央有一道裂纹——那是你积累的心魔侵蚀的痕迹。", choices: [
+        { text: "以意志修补裂纹，完美金丹", next: 2, tier: 1, demon: 15 },
+        { text: "裂纹不深，强行凝丹", next: 2, tier: 2 },
+        { text: "不管了，先成型再说", next: 2, tier: 3 },
+        { text: "（心魔已清者）金丹通体无瑕", next: 2, tier: 1, secret: true, condition: () => (window._lastShopData?.inner_demon || 0) < 30 },
+      ]},
+      { text: "金丹大成！但最后一关——丹劫降临。天空中凝聚出一道天雷，直劈你的金丹。\n\n这是天道的考验：金丹越纯粹，天雷越猛。", choices: [
+        { text: "以金丹硬抗天劫，越挫越勇", finish: true, tier: 1 },
+        { text: "借天雷之力淬炼金丹", finish: true, tier: 1, demon: 10 },
+        { text: "闪避为主，保住金丹就行", finish: true, tier: 2 },
+        { text: "差点被劈碎，金丹裂纹加深", finish: true, tier: 3 },
       ]},
     ],
   },
   4: {
     name: "元婴出窍",
     scenes: [
-      { text: "金丹欲化元婴，需经历「化形之痛」。你的金丹裂开，一个小人从中诞生——那是你的元婴。\n\n元婴睁眼的第一句话是……", choices: [
-        { text: "「我是谁不重要，重要的是我要变强」", next: 1, tier: 1 },
-        { text: "「你好，另一个我」", next: 1, tier: 2 },
-        { text: "「能不能让我再睡会」", next: 1, tier: 3 },
+      { text: "金丹欲化元婴，需经历「化形之痛」。你的金丹在丹田中剧烈颤动，表面出现无数裂纹——它在孵化。\n\n终于，金丹碎裂，一个小人从中诞生。那是你的元婴——一个缩小版的你，穿着同样的道袍。", choices: [
+        { text: "「你好，另一个我。」温和接纳", next: 1, tier: 1 },
+        { text: "「我是你，你要听我的。」强势控制", next: 1, tier: 2 },
+        { text: "「能不能让我再睡会儿……」元婴也在摸鱼", next: 1, tier: 3 },
       ]},
-      { text: "元婴成形，但还不稳定。你需要让它与肉身合一……", choices: [
-        { text: "天人合一，完美融合", finish: true, tier: 1 },
-        { text: "慢慢磨合", finish: true, tier: 2 },
-        { text: "元婴差点跑掉", finish: true, tier: 3 },
+      { text: "元婴睁眼环顾四周，突然指着你的脑海说：「那里好黑，好多黑色的雾气在蠕动……好可怕。」\n\n它看到的是你的心魔。元婴与心魔共存于神识之中，心魔越多，元婴越不安。", choices: [
+        { text: "「别怕，我来净化。」安抚元婴并化解心魔", next: 2, tier: 1, demon: 20 },
+        { text: "「那不重要，先变强。」忽略心魔", next: 2, tier: 2 },
+        { text: "「……我也怕。」与元婴一起畏惧", next: 2, tier: 3 },
+      ]},
+      { text: "元婴逐渐稳定，但还需要与肉身合一。这过程中，你会暂时失去所有感官——看不见、听不见、感受不到。\n\n你的手机响了。是工作群的消息：「@全体成员 紧急会议，现在上线。」", choices: [
+        { text: "屏蔽一切，天人合一", next: 3, tier: 1 },
+        { text: "犹豫了一下，还是继续融合", next: 3, tier: 2 },
+        { text: "看了一眼手机，元婴差点跑掉", next: 3, tier: 3 },
+        { text: "（已飞升坐骑者）元婴骑上坐骑，稳如泰山", next: 3, tier: 1, secret: true, condition: () => (window._lastShopData?.equipped_mount || 0) > 0 },
+      ]},
+      { text: "元婴与肉身完美融合！你感受到前所未有的清明——感官变得更加敏锐，灵力运转如臂使指。\n\n你的意识可以短暂脱离肉身，以元婴形态观察世界。第一次出窍时，你看到了……", choices: [
+        { text: "看到了无数打工人头顶的疲惫之气", finish: true, tier: 1, demon: 10 },
+        { text: "看到了灵脉的走向，天地之美", finish: true, tier: 1 },
+        { text: "看到了甲方的前世（是一只蚊子）", finish: true, tier: 2 },
+        { text: "什么都没看清就回来了", finish: true, tier: 3 },
       ]},
     ],
   },
   5: {
     name: "化神渡劫",
     scenes: [
-      { text: "元婴圆满，化神在即。但化神劫是修仙路上最凶险的天劫——九道天雷接连劈下。\n\n天空中乌云翻涌，第一道雷已至……", choices: [
-        { text: "以身为引，主动迎雷", next: 1, tier: 1 },
-        { text: "布阵御雷", next: 1, tier: 2 },
-        { text: "躲在石头后面", next: 1, tier: 3 },
+      { text: "元婴圆满，化神在即。但化神劫是修仙路上最凶险的天劫——九道天雷接连劈下，一道比一道猛。\n\n天空中乌云翻涌，方圆百里灵气紊乱。你的手机收到天气预警：雷暴预警。", choices: [
+        { text: "以身为引，主动迎雷（最险但最强）", next: 1, tier: 1 },
+        { text: "布阵御雷，稳扎稳打", next: 1, tier: 2 },
+        { text: "找个避雷针躲着……", next: 1, tier: 3 },
       ]},
-      { text: "九道天雷你扛过了八道。最后一道——也是最恐怖的——劈向你的元神……", choices: [
-        { text: "「我命由我不由天！」硬抗", finish: true, tier: 1 },
-        { text: "借法宝之力渡劫", finish: true, tier: 2 },
-        { text: "差点元神俱灭", finish: true, tier: 3 },
+      { text: "第一道至第三道天雷连劈而下！你的护体灵光被打得粉碎，道袍烧了一半。\n\n雷劫之间有短暂间歇，你听到心魔在狂笑：「哈！被打成这样还想化神？乖乖回去打工吧！」", choices: [
+        { text: "「闭嘴！」怒斩心魔，以怒意抗雷", next: 2, tier: 1, demon: 25 },
+        { text: "无视心魔，专注调息恢复", next: 2, tier: 2 },
+        { text: "被心魔干扰，恢复变慢", next: 2, tier: 3 },
+      ]},
+      { text: "第四道至第六道天雷！这三道雷形成三角阵势，封锁了你的退路。\n\n你的坐骑（如果有）发出鸣叫，愿意替你分担雷劫——但代价是它会重伤。", choices: [
+        { text: "独自抗下，不连累坐骑", next: 3, tier: 1 },
+        { text: "接受坐骑的帮助，共同抗雷", next: 3, tier: 2 },
+        { text: "没有坐骑，只能硬扛", next: 3, tier: 2, condition: () => (window._lastShopData?.equipped_mount || 0) === 0 },
+      ]},
+      { text: "第七道、第八道天雷劈下！你浑身焦黑，元婴在丹田中摇摇欲坠。但你还站着。\n\n最后一道——第九道天雷——正在云层中酝酿。这道雷不同于前八道，它是紫色的，带着毁灭一切的威压。", choices: [
+        { text: "「我命由我不由天！」主动冲向天雷", next: 4, tier: 1 },
+        { text: "以最后灵力布下防御", next: 4, tier: 2 },
+        { text: "已经快撑不住了……", next: 4, tier: 3 },
+      ]},
+      { text: "第九道紫色天雷轰然落下！在它接触到你的一瞬间，时间仿佛静止。\n\n你的脑海中闪过整个修仙之路——从攒够500灵石的那个夜晚，到此刻立于雷劫之下。打工仔的身影、心魔的低语、元婴的微笑……\n\n你忽然明白了什么。", choices: [
+        { text: "「打工是凡人的劫，修仙是我的道。」以悟道之力化解天雷", finish: true, tier: 1, demon: 30 },
+        { text: "以毕生修为硬接天雷", finish: true, tier: 1 },
+        { text: "勉强接下，重伤濒死", finish: true, tier: 2 },
+        { text: "被天雷劈飞，差点元神俱灭", finish: true, tier: 3 },
       ]},
     ],
   },
   6: {
     name: "飞升之路",
     scenes: [
-      { text: "化神圆满，飞升之门已开。天际出现一道金色裂缝，那是通往仙界的路。\n\n飞升后，你将离开这个打工的世界，化为仙人……", choices: [
-        { text: "义无反顾，踏入飞升之门", finish: true, tier: 1 },
+      { text: "化神圆满，飞升之门已开。天际出现一道金色裂缝，那是通往仙界的路。金光从裂缝中倾泻而下，照亮了你脚下的打工工位。\n\n飞升后，你将离开这个打工的世界，化为仙人。但你回头看了一眼——屏幕角落里，那个陪你一路走来的像素打工仔正安静地待着。", choices: [
+        { text: "回头看了一眼，微笑道别", next: 1, tier: 1, demon: 20 },
+        { text: "头也不回，踏入金光", next: 1, tier: 2 },
+        { text: "犹豫了……真的要走吗？", next: 1, tier: 3 },
+      ]},
+      { text: "金光将你包裹。凡间的一切——加班报告、甲方需求、打卡记录——都在化为光点消散。\n\n在最后一刻，你听见打工仔说了一句话：「谢谢你带我修仙。以后……你自由了。」", choices: [
+        { text: "「不，是你自由了。」踏入飞升之门", finish: true, tier: 1 },
+        { text: "「再见，老伙计。」含泪飞升", finish: true, tier: 1, demon: 10 },
       ]},
     ],
   },
@@ -565,14 +628,19 @@ function renderStoryScene() {
   storyText.textContent = scene.text;
   storyChoices.innerHTML = "";
   for (const choice of scene.choices) {
+    // 条件选项：condition 函数返回 false 则不显示（用于隐藏选项）
+    if (choice.condition && !choice.condition()) continue;
     const btn = document.createElement("button");
     btn.className = "btn-story-choice";
+    if (choice.secret) btn.classList.add("secret-choice");
     btn.textContent = choice.text;
     btn.addEventListener("click", () => {
       // 记录最好的 tier（数字越小越好）
       if (choice.tier < storyState.tier) storyState.tier = choice.tier;
+      // 特殊效果：降低心魔（剧情里的"斩心魔"选项）
+      if (choice.demon) storyState.demonReduce = (storyState.demonReduce || 0) + choice.demon;
       if (choice.finish) {
-        finishRealmTask(storyState.tier);
+        finishRealmTask(storyState.tier, storyState.demonReduce || 0);
       } else {
         storyState.sceneIdx = choice.next;
         renderStoryScene();
@@ -582,12 +650,14 @@ function renderStoryScene() {
   }
 }
 
-async function finishRealmTask(tier) {
+async function finishRealmTask(tier, demonReduce = 0) {
   try {
-    await invoke("complete_realm_task", { tier });
+    await invoke("complete_realm_task", { tier, demonReduce });
     const tierName = tier === 1 ? "完美" : tier === 2 ? "普通" : "勉强";
     const bonus = tier === 1 ? 8 : tier === 2 ? 5 : 2;
-    showToast(`${tierName}完成！突破成功率 +${bonus}%`, "success");
+    let msg = `${tierName}完成！突破成功率 +${bonus}%`;
+    if (demonReduce > 0) msg += `，心魔 -${demonReduce}`;
+    showToast(msg, "success");
   } catch (e) {
     showToast(String(e), "error");
   }
