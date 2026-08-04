@@ -105,6 +105,9 @@ const SPELL_STAMINA_COST: [f32; 5] = [10.0, 15.0, 20.0, 30.0, 45.0];
 const SPELL_GAIN_EXP: [f32; 5] = [5.0, 8.0, 12.0, 18.0, 25.0];
 /// 法术施展：时薪收益（按阶位递增）—— 施法如工作，越强收获越大
 const SPELL_GAIN_WAGE: [f32; 5] = [3.0, 5.0, 8.0, 12.0, 18.0];
+/// 法术施展：心魔影响（正=增加躁动，负=净化心魔）
+/// 火球术+5(烈焰躁动) / 冰封术-15(冰心诀) / 雷劫术-10(以雷劫炼心) / 万剑诀-5(剑心通明) / 天地同寿-20(大道至简)
+const SPELL_DEMON_EFFECT: [f32; 5] = [5.0, -15.0, -10.0, -5.0, -20.0];
 
 pub fn realm_name(realm: i64) -> &'static str {
     REALM_NAMES.get(realm as usize).copied().unwrap_or("？？？")
@@ -842,16 +845,17 @@ impl PetState {
         }
         // 执行：消耗体力 + 获得修为/时薪（施法如工作）
         self.stamina -= cost;
-        let gain_exp = SPELL_GAIN_EXP[i];
+        // 坐骑共鸣：骑坐骑时施法修为 ×1.5（人骑合一，灵力倍增）
+        let mount_bonus = if ev.equipped_mount > 0 { 1.5 } else { 1.0 };
+        let gain_exp = SPELL_GAIN_EXP[i] * mount_bonus;
         let gain_wage = SPELL_GAIN_WAGE[i];
         if ev.cultivation_realm < 6 {
             ev.cultivation_exp = (ev.cultivation_exp + gain_exp).min(100.0);
         }
         self.hourly_wage = (self.hourly_wage + gain_wage).min(200.0);
-        // 冰封术特殊效果：以冰之纯净冻结心魔，-15
-        if spell == "ice" {
-            ev.inner_demon = (ev.inner_demon - 15.0).max(0.0);
-        }
+        // 法术心魔影响：每个法术有独特的心魔效果
+        let demon_eff = SPELL_DEMON_EFFECT[i];
+        ev.inner_demon = (ev.inner_demon + demon_eff).max(0.0).min(100.0);
         Ok(vec![CultEvent::SpellCast { spell: spell.to_string() }])
     }
 

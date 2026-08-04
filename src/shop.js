@@ -16,11 +16,11 @@ const MOUNTS = [
   { id: 5, key: "mount_phoenix", name: "凤凰", icon: "凤", price: 15000, minRealm: 5, desc: "火凤展翅，烈焰拖尾" },
 ];
 const SPELLS = [
-  { key: "fireball",  name: "火球术",   icon: "火", price: 300,  staminaCost: 10, gainExp: 5,  gainWage: 3,  desc: "红橙火球爆裂" },
-  { key: "ice",       name: "冰封术",   icon: "冰", price: 600,  staminaCost: 15, gainExp: 8,  gainWage: 5,  desc: "蓝白冰晶绽放 · 净心-15" },
-  { key: "thunder",   name: "雷劫术",   icon: "雷", price: 1200, staminaCost: 20, gainExp: 12, gainWage: 8,  desc: "紫白闪电劈下" },
-  { key: "swords",    name: "万剑诀",   icon: "剑", price: 3000, staminaCost: 30, gainExp: 18, gainWage: 12, desc: "数十光剑天降" },
-  { key: "armageddon", name: "天地同寿", icon: "灭", price: 8000, staminaCost: 45, gainExp: 25, gainWage: 18, desc: "五色光柱冲天" },
+  { key: "fireball",  name: "火球术",   icon: "火", price: 300,  staminaCost: 10, gainExp: 5,  gainWage: 3,  desc: "红橙火球爆裂 · 心魔+5(烈焰躁动)" },
+  { key: "ice",       name: "冰封术",   icon: "冰", price: 600,  staminaCost: 15, gainExp: 8,  gainWage: 5,  desc: "蓝白冰晶绽放 · 净心-15(冰心诀)" },
+  { key: "thunder",   name: "雷劫术",   icon: "雷", price: 1200, staminaCost: 20, gainExp: 12, gainWage: 8,  desc: "紫白闪电劈下 · 炼心-10(以雷炼心)" },
+  { key: "swords",    name: "万剑诀",   icon: "剑", price: 3000, staminaCost: 30, gainExp: 18, gainWage: 12, desc: "数十光剑天降 · 剑心-5(通明)" },
+  { key: "armageddon", name: "天地同寿", icon: "灭", price: 8000, staminaCost: 45, gainExp: 25, gainWage: 18, desc: "五色光柱冲天 · 净心-20(大道至简)" },
 ];
 const ITEM_PRICE = {
   qi_pill: 50,
@@ -90,7 +90,7 @@ function renderSpells(data) {
       <div class="item-icon spell-icon">${s.icon}</div>
       <div class="item-info">
         <div class="item-name">${s.name} ${owned ? `<span class="owned-tag">✓已习得</span>` : ""}</div>
-        <div class="item-desc">${s.desc}${owned ? ` · 耗体力${s.staminaCost} 修为+${s.gainExp} 时薪+${s.gainWage}` : ""}</div>
+        <div class="item-desc">${s.desc}${owned ? ` · 耗体力${s.staminaCost} 修为+${s.gainExp}${data.equipped_mount > 0 ? "×1.5" : ""} 时薪+${s.gainWage}${data.equipped_mount > 0 ? ' <span style="color:#6ad7c1">·坐骑共鸣</span>' : ""}` : ""}</div>
       </div>
       <div class="item-right">
         ${owned ? "" : `<div class="item-price">${s.price}</div>`}
