@@ -1182,10 +1182,10 @@ function drawVariant(now) {
     ctx.moveTo(8, -2); ctx.lineTo(5, 3); ctx.lineTo(7, 7);
     ctx.stroke();
   }
-  // 灰暗光晕（variant 3+）：整体笼罩暗色雾气
-  if (petVariant >= 3) {
+  // 灰暗光晕（variant 8+ 重度沧桑才显示，避免轻度变异就全黑）
+  if (petVariant >= 8) {
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = `rgba(40, 35, 45, ${Math.min(0.25, (petVariant - 2) * 0.04)})`;
+    ctx.fillStyle = `rgba(40, 35, 45, ${Math.min(0.2, (petVariant - 7) * 0.03)})`;
     ctx.beginPath();
     ctx.ellipse(0, 0, 22, 30, 0, 0, Math.PI * 2);
     ctx.fill();

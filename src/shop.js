@@ -160,6 +160,10 @@ function render(data) {
     if (data.realm >= 6) {
       const btn = document.querySelector('[data-item="breakthrough_pill"]');
       if (btn) { btn.disabled = true; btn.textContent = "已飞升"; }
+    } else {
+      // 非飞升状态：恢复突破丹按钮（修复飞升后切回低境界按钮未恢复）
+      const btn = document.querySelector('[data-item="breakthrough_pill"]');
+      if (btn && btn.textContent === "已飞升") { btn.disabled = false; btn.textContent = "购买"; }
     }
     // 心魔丹按钮：已用完或已飞升则禁用
     const hdBtn = document.querySelector('[data-item="heart_devil_pill"]');
