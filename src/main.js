@@ -1159,21 +1159,20 @@ function drawPhoenixWing(x, y, dir, flap) {
 // 注意：这里手动叠加光效，不依赖 ctx.filter（filter 已被表情层占用）。
 /**
  * 过劳变异叠加（pet_variant 越高越沧桑）
- * variant 1+：黑眼圈（眼下深色）
- * variant 3+：灰暗滤镜（saturate 降低）
- * variant 5+：脸上裂纹（程序绘制）
- * variant 8+：全灰（黑白默片效果）
+ * 黑眼圈跟当前体力挂钩（实时反映疲劳，恢复后消失）
+ * 裂纹/灰暗跟 petVariant 挂钩（永久变异记录，只在重度时显示）
  */
 function drawVariant(now) {
-  if (petVariant < 1) return;
   const t = now / 1000;
-  // 黑眼圈（variant 1+）：眼下深色半圆
-  if (petVariant >= 1) {
-    ctx.fillStyle = `rgba(40, 30, 50, ${Math.min(0.5, petVariant * 0.1)})`;
+  // 黑眼圈：跟当前体力挂钩，体力<50 开始出现，<20 加深
+  const stamina = displayStamina;
+  if (stamina < 50) {
+    const darkness = stamina < 20 ? 0.45 : 0.25;
+    ctx.fillStyle = `rgba(40, 30, 50, ${darkness})`;
     ctx.beginPath(); ctx.ellipse(-5, -4, 3, 1.5, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(5, -4, 3, 1.5, 0, 0, Math.PI * 2); ctx.fill();
   }
-  // 脸上裂纹（variant 5+）：从眼角延伸的细线
+  // 脸上裂纹（variant 5+）：永久变异记录
   if (petVariant >= 5) {
     ctx.strokeStyle = `rgba(60, 40, 50, 0.5)`;
     ctx.lineWidth = 0.6;
@@ -1182,7 +1181,7 @@ function drawVariant(now) {
     ctx.moveTo(8, -2); ctx.lineTo(5, 3); ctx.lineTo(7, 7);
     ctx.stroke();
   }
-  // 灰暗光晕（variant 8+ 重度沧桑才显示，避免轻度变异就全黑）
+  // 灰暗光晕（variant 8+ 重度沧桑才显示）
   if (petVariant >= 8) {
     ctx.globalCompositeOperation = "source-over";
     ctx.fillStyle = `rgba(40, 35, 45, ${Math.min(0.2, (petVariant - 7) * 0.03)})`;
