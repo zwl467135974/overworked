@@ -499,6 +499,8 @@ impl PetState {
             self.focus_seconds = 0.0;
             self.savings += 200.0; // 项目交付奖金
             self.mood = (self.mood + 15.0).min(100.0); // 交付心情大好
+            // 交付后休整：恢复 1 点过劳变异
+            ev.pet_variant = ev.pet_variant.saturating_sub(1);
             // 修仙模式：交付=悟道，修为增加
             if ev.cultivation_mode && ev.cultivation_realm < 6 {
                 let boost = now_secs as i64 <= ev.spirit_boost_until;
@@ -698,6 +700,7 @@ impl PetState {
             "qi_pill" => 50,
             "life_pill" => 100,
             "spirit_talisman" => 200,
+            "cleansing_pill" => 1000, // 洗髓丹：清除所有负面状态
             "breakthrough_pill" => breakthrough_price(ev.cultivation_realm),
             "mount_sword" => MOUNT_INFO[1].1,
             "mount_gourd" => MOUNT_INFO[2].1,
@@ -757,6 +760,8 @@ impl PetState {
             "qi_pill" => {
                 ev.item_qi_pill += 1;
                 self.stamina = (self.stamina + 50.0).min(100.0);
+                // 回气丹疗伤：恢复 1 点过劳变异
+                ev.pet_variant = ev.pet_variant.saturating_sub(1);
             }
             "life_pill" => {
                 ev.item_life_pill += 1;
@@ -764,6 +769,13 @@ impl PetState {
             "spirit_talisman" => {
                 ev.item_spirit_talisman += 1;
                 ev.spirit_boost_until = (now_secs as i64) + 3600;
+            }
+            "cleansing_pill" => {
+                // 洗髓丹：清除所有负面状态（心魔清零+变异清零+体力回满+心情回满）
+                ev.inner_demon = 0.0;
+                ev.pet_variant = 0;
+                self.stamina = 100.0;
+                self.mood = 100.0;
             }
             "breakthrough_pill" => {
                 return self.attempt_breakthrough(ev, now_secs);

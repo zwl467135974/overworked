@@ -26,6 +26,7 @@ const ITEM_PRICE = {
   qi_pill: 50,
   life_pill: 100,
   spirit_talisman: 200,
+  cleansing_pill: 1000,
 };
 
 // DOM
